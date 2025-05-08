@@ -1,0 +1,21 @@
+{
+  "processor_settings": {
+    "group": 5,
+    "keep_variables": ["X", "Y", "Z", "Intensity", "Classification", "HeightAboveGround"],
+    "n_jobs": 3
+  },
+  "lidar_settings": {
+    "srs": "EPSG:2154",
+    "hag": true,
+    "thin_radius": null,
+    "outlier": [40, 1.5],
+    "smrf": false,
+    "only_vegetation": false
+  },
+  "paths": {
+    "input_path": "",
+    "output_dir": "",
+    "lidar_list_tiles": "",
+    "area_of_interest": ""
+  }
+}
