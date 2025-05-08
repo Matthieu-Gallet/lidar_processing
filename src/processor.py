@@ -9,27 +9,17 @@ import json
 import time
 import gc
 import traceback
-import numpy as np
 import tracemalloc
 import psutil
 import subprocess
 import tempfile
-from hashlib import sha256
 from joblib import Parallel, delayed
-from tqdm import tqdm
+
 import logging
 import shutil
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional, Any, Union
-from .uncompress import uncompress_crop_tiles
 
-from .grid import (
-    construct_matrix_coordinates,
-    construct_grid,
-    group_adjacent_tiles_by_n,
-    select_group_tiles,
-)
-from .visualization import plot_grouped_tiles
+from .uncompress import uncompress_crop_tiles
+from .grid import select_group_tiles
 from .utils import init_logger, generate_hash
 
 from .monitoring import MemoryMonitor
@@ -282,8 +272,8 @@ class LidarProcessor:
 
         # Start memory tracking
         tracemalloc.start()
-        process = psutil.Process(os.getpid())
-        mem_before = process.memory_info().rss / (1024 * 1024)
+        process_pid = psutil.Process(os.getpid())
+        mem_before = process_pid.memory_info().rss / (1024 * 1024)
 
         # Prepare output path
         diff_dir = os.path.relpath(
@@ -332,15 +322,31 @@ class LidarProcessor:
                     # Create temporary output file for subprocess
                     temp_output = os.path.join(temp_dir, f"output_{basename}.npy")
 
-                    # Path to the read_lidar_subprocess.py script
-                    script_path = os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)),
-                        "read_lidar_subprocess.py",
-                    )
+                    # import subprocess
+                    # import json
+                    # import tempfile
 
-                    # Make sure the script is executable
-                    if not os.access(script_path, os.X_OK):
-                        os.chmod(script_path, 0o755)
+                    # pipeline = {
+                    #     "pipeline": [
+                    #         {"type": "readers.las", "filename": "input.laz"},
+                    #         {"type": "writers.las", "filename": "output.laz"}
+                    #     ]
+                    # }
+
+                    # # Crée un fichier temporaire JSON
+                    # with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as f:
+                    #     json.dump(pipeline, f)
+                    #     temp_json_path = f.name
+
+                    # # Lance PDAL
+                    # result = subprocess.run(
+                    #     ["pdal", "pipeline", temp_json_path],
+                    #     stdout=subprocess.PIPE,
+                    #     stderr=subprocess.PIPE
+                    # )
+
+                    # print("STDOUT:", result.stdout.decode())
+                    # print("STDERR:", result.stderr.decode())
 
                     # Execute subprocess
                     process = subprocess.run(
@@ -371,8 +377,6 @@ class LidarProcessor:
                             f"Output file {temp_output} not created by subprocess"
                         )
 
-                    # Read the output file
-
                 # Clean up memory
                 gc.collect()
 
@@ -396,9 +400,10 @@ class LidarProcessor:
                     + f" ✅ Group {basename} processed successfully "
                     + "=" * 25
                 )
+                mem_after = process_pid.memory_info().rss / (1024 * 1024)
                 current_log.info(
                     f"Quality: {quality_name}, "
-                    f"Memory: Before={mem_before:.2f}MB, "
+                    f"Memory: Before={mem_before:.2f}MB, After={mem_after:.2f}MB, Diff={mem_after - mem_before:.2f}MB, "
                     f"Time: {time.time()-start_time:.2f}s"
                 )
                 self.remaining_groups.remove(input_files)
@@ -406,6 +411,9 @@ class LidarProcessor:
                     (len(self.group_path) - len(self.remaining_groups))
                     * 100
                     / len(self.group_path)
+                )
+                current_log.info(
+                    f"Progress: {percentage:.2f}% ({len(self.group_path) - len(self.remaining_groups)}/{len(self.group_path)})"
                 )
                 # Mark as processed in status tracker
                 self.corresponding_files[basename] = input_files
