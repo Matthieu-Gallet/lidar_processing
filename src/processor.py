@@ -21,16 +21,16 @@ import logging
 import shutil
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional, Any, Union
-from .pyforestscan.handlers import read_lidar, write_las
-from .utils import uncompress_lidar
+from .uncompress import uncompress_crop_tiles
 
 from .grid import (
     construct_matrix_coordinates,
     construct_grid,
     group_adjacent_tiles_by_n,
+    select_group_tiles,
 )
 from .visualization import plot_grouped_tiles
-from .utils import init_logger, select_and_save_tiles, generate_hash
+from .utils import init_logger, generate_hash
 
 from .monitoring import MemoryMonitor
 from .status import ProcessingStatus
@@ -144,12 +144,7 @@ class LidarProcessor:
         Réinitialise les attributs qui n'ont pas été picklés.
         """
         self.__dict__.update(state)
-        # Réinitialiser les attributs non-picklés (ils ne sont pas nécessaires
-        # ou doivent être recréés dans le worker si besoin).
         self.memory_monitor = None
-        # Mettre le log à None. Si le worker doit logger, il faudra
-        # soit vérifier si self.log est None avant usage,
-        # soit l'initialiser ici (ex: avec logging.getLogger).
         self.log = None
 
     def _estimate_memory_limit(self):
@@ -158,59 +153,88 @@ class LidarProcessor:
         # Use 75% of available memory as a default limit
         return int(system_memory * 0.75 / self.n_jobs)
 
-    def _select_group_tiles(self):
+    def uncompress_lidar(self, lidar_list_tiles, area_of_interest=None):
         """
-        Select and group tiles based on their coordinates.
+        Uncompress all LiDAR tiles and optionally crop them to the area of interest.
+
+        Parameters:
+        ----------
+        lidar_list_tiles : str
+            Path to the shapefile containing the list of LiDAR tiles.
+        area_of_interest : str, optional
+            Path to the shapefile containing the area of interest.
         """
-        if self.tiles_uncomp is None:
-            self.log.info("No uncompressed tiles found, using original tiles.")
-            self.log.info(f"First tile: {self.tiles[0]}")
-            self.coords = construct_matrix_coordinates(self.tiles, original=True)
+        self.output_dir_uncompress = os.path.join(self.output_dir, "uncompress")
+        os.makedirs(self.output_dir_uncompress, exist_ok=True)
+
+        self.log.info(f"Uncompressing tiles to {self.output_dir_uncompress}")
+        self.log.info(f"Uncompressing {len(self.tiles)} tiles")
+
+        if area_of_interest is not None:
+            self.log.info(f"Shapefile of tiles: {lidar_list_tiles}")
+            self.log.info(f"Area of interest: {area_of_interest}")
         else:
-            self.log.info("Using uncompressed tiles for processing.")
-            self.log.info(f"First tile: {self.tiles_uncomp[0]}")
-            self.coords = construct_matrix_coordinates(
-                self.tiles_uncomp, original=False
-            )
+            self.log.info("No area of interest provided, processing all tiles")
 
-        self.grid, self.indexes, self.indices = construct_grid(self.coords)
-        self.groups = group_adjacent_tiles_by_n(self.grid, self.indexes, n=self.group)
-        self._maps_group2tilespath()
-
-    def _maps_group2tilespath(self):
-        """
-        Create a mapping of group IDs to tile paths.
-        """
-        all_tiles = []
-        for group in self.groups:
-            group_paths = []
-            for tile in group:
-                try:
-                    matching_files = glob.glob(
-                        os.path.join(
-                            self.output_dir_uncompress,
-                            "**",
-                            f"*{tile[0]}*{tile[1]}*.las",
-                        ),
-                        recursive=True,
-                    )
-                    if matching_files:
-                        group_paths.append(matching_files[0])
-                except Exception as e:
-                    self.log.error(f"Error mapping tile {tile}: {e}")
-                    group_paths.append(None)
-            group_paths = [path for path in group_paths if path is not None]
-            all_tiles.append(group_paths)
-        self.group_path = all_tiles
-
-    def plot_tiles_strategy(self):
-        """
-        Generate a visualization of the tile grouping strategy.
-        """
-        output_file = os.path.join(self.output_dir_proc, "strategy_grouped_tiles.png")
-        plot_grouped_tiles(
-            self.grid, self.groups, self.indices, output_file=output_file
+        # Check for already uncompressed files
+        existing_files = glob.glob(
+            os.path.join(self.output_dir_uncompress, "**/*.las"), recursive=True
         )
+        existing_basenames = {
+            os.path.basename(f).split("_")[1].split(".")[0] for f in existing_files
+        }
+
+        tiles_to_process = []
+        for tile in self.tiles:
+            basename = os.path.basename(tile).split(".")[0]
+            if basename not in existing_basenames:
+                tiles_to_process.append(tile)
+                self.log.info(f"Tile {tile} needs to be uncompressed")
+
+        self.log.info(f"Found {len(existing_files)} already uncompressed files")
+        self.log.info(f"Need to uncompress {len(tiles_to_process)} more tiles")
+
+        if not tiles_to_process:
+            self.log.info("All tiles already uncompressed, skipping this step")
+            self.tiles_uncomp = existing_files
+            return
+
+        results = Parallel(n_jobs=self.n_jobs_uncompress, verbose=100)(
+            delayed(uncompress_crop_tiles)(
+                self.path,
+                self.output_dir_uncompress,
+                input_file,
+                lidar_list_tiles,
+                area_of_interest,
+                self.log,
+            )
+            for input_file in tiles_to_process
+        )
+        # Add valid results to list
+        valid_results = [r for r in results if r is not None]
+        self.tiles_uncomp.extend(valid_results)
+
+        # Force garbage collection
+        gc.collect()
+        self.log.info(f"Uncompressed {len(valid_results)} tiles successfully")
+
+    def _check_existing_files(self):
+        """
+        Check for already processed files to avoid duplicate processing.
+        """
+        group2process = []
+
+        for group in self.group_path:
+            basename = generate_hash(group)
+
+            if not self.status.is_processed(basename):
+                group2process.append(group)
+
+        self.log.info(
+            f"Found {len(self.group_path) - len(group2process)} already processed groups"
+        )
+        self.log.info(f"Need to process {len(group2process)} more groups")
+        self.group_path = group2process
 
     def process_worker(self, input_files):
         """
@@ -395,138 +419,6 @@ class LidarProcessor:
         # This should not be reached, but just in case
         return (None, None, None)
 
-    def uncompress_crop_tiles(self, input_file, lidar_list_tiles, area_of_interest):
-        """
-        Uncompress LiDAR tiles and crop them to the area of interest.
-
-        Parameters:
-        ----------
-        input_file : str
-            Path to the input file (LiDAR tiles).
-        lidar_list_tiles : str
-            Path to the shapefile containing the list of LiDAR tiles.
-        area_of_interest : str
-            Path to the shapefile containing the area of interest.
-
-        Returns:
-        -------
-        str or None
-            Path to the uncompressed output file or None if processing failed.
-        """
-        if self.path is None:
-            name_out = os.path.join(
-                self.output_dir_uncompress,
-                "uncompress_" + os.path.basename(input_file).split(".")[0] + ".las",
-            )
-        else:
-            diff_dir = os.path.relpath(
-                os.path.dirname(input_file), os.path.dirname(self.path)
-            )
-            name_out = os.path.join(
-                self.output_dir_uncompress,
-                diff_dir,
-                "uncompress_" + os.path.basename(input_file).split(".")[0] + ".las",
-            )
-            os.makedirs(os.path.dirname(name_out), exist_ok=True)
-
-        if os.path.exists(name_out):
-            return name_out
-        else:
-            try:
-
-                check_tile = select_and_save_tiles(
-                    tuiles_path=lidar_list_tiles,
-                    parcelle_path=area_of_interest,
-                    name_file=input_file,
-                    crop=False,
-                )
-                if check_tile == 1:
-                    uncompress_lidar(input_file, name_out)
-
-                return name_out
-
-            except Exception as e:
-                self.log.error(f"Error uncompressing {input_file}: {e}")
-                return None
-
-    def uncompress_lidar(self, lidar_list_tiles, area_of_interest=None):
-        """
-        Uncompress all LiDAR tiles and optionally crop them to the area of interest.
-
-        Parameters:
-        ----------
-        lidar_list_tiles : str
-            Path to the shapefile containing the list of LiDAR tiles.
-        area_of_interest : str, optional
-            Path to the shapefile containing the area of interest.
-        """
-        self.output_dir_uncompress = os.path.join(self.output_dir, "uncompress")
-        os.makedirs(self.output_dir_uncompress, exist_ok=True)
-
-        self.log.info(f"Uncompressing tiles to {self.output_dir_uncompress}")
-        self.log.info(f"Uncompressing {len(self.tiles)} tiles")
-
-        if area_of_interest is not None:
-            self.log.info(f"Shapefile of tiles: {lidar_list_tiles}")
-            self.log.info(f"Area of interest: {area_of_interest}")
-        else:
-            self.log.info("No area of interest provided, processing all tiles")
-
-        # Check for already uncompressed files
-        existing_files = glob.glob(
-            os.path.join(self.output_dir_uncompress, "**/*.las"), recursive=True
-        )
-        existing_basenames = {
-            os.path.basename(f).split("_")[1].split(".")[0] for f in existing_files
-        }
-
-        tiles_to_process = []
-        for tile in self.tiles:
-            basename = os.path.basename(tile).split(".")[0]
-            if basename not in existing_basenames:
-                tiles_to_process.append(tile)
-                self.log.info(f"Tile {tile} needs to be uncompressed")
-
-        self.log.info(f"Found {len(existing_files)} already uncompressed files")
-        self.log.info(f"Need to uncompress {len(tiles_to_process)} more tiles")
-
-        if not tiles_to_process:
-            self.log.info("All tiles already uncompressed, skipping this step")
-            self.tiles_uncomp = existing_files
-            return
-
-        results = Parallel(n_jobs=self.n_jobs_uncompress, verbose=100)(
-            delayed(self.uncompress_crop_tiles)(
-                input_file, lidar_list_tiles, area_of_interest
-            )
-            for input_file in tiles_to_process
-        )
-        # Add valid results to list
-        valid_results = [r for r in results if r is not None]
-        self.tiles_uncomp.extend(valid_results)
-
-        # Force garbage collection
-        gc.collect()
-        self.log.info(f"Uncompressed {len(valid_results)} tiles successfully")
-
-    def _check_existing_files(self):
-        """
-        Check for already processed files to avoid duplicate processing.
-        """
-        group2process = []
-
-        for group in self.group_path:
-            basename = generate_hash(group)
-
-            if not self.status.is_processed(basename):
-                group2process.append(group)
-
-        self.log.info(
-            f"Found {len(self.group_path) - len(group2process)} already processed groups"
-        )
-        self.log.info(f"Need to process {len(group2process)} more groups")
-        self.group_path = group2process
-
     def process_lidar(self):
         """
         Process the LiDAR tiles in groups with adaptive batch processing.
@@ -545,11 +437,27 @@ class LidarProcessor:
         self.output_dir_proc = os.path.join(self.output_dir, "processed")
         os.makedirs(self.output_dir_proc, exist_ok=True)
 
-        self._select_group_tiles()
-        self.plot_tiles_strategy()
-        self.log.info(f"Processing {len(self.groups)} groups of tiles")
-        self.log.info(f"Keeping variables: {self.options["keep_variables"]}")
+        plot_file = os.path.join(self.output_dir_proc, "strategy_grouped_tiles.png")
+        if self.tiles_uncomp is None:
+            self.log.info("No uncompressed tiles found, using original tiles.")
+            self.log.info(f"First tile: {self.tiles[0]}")
+            original = True
+        else:
+            self.log.info("Using uncompressed tiles for processing.")
+            self.log.info(f"First tile: {self.tiles_uncomp[0]}")
+            original = False
 
+        self.group_path = select_group_tiles(
+            self.tiles,
+            self.output_dir_uncompress,
+            tilesingroup=self.group,
+            original=original,
+            plot_file=plot_file,
+            log=self.log,
+        )
+
+        self.log.info(f"Processing {len(self.group_path)} groups of tiles")
+        self.log.info(f"Keeping variables: {self.options["keep_variables"]}")
         self._check_existing_files()
 
         if not self.group_path:
@@ -568,51 +476,6 @@ class LidarProcessor:
 
         self.remaining_groups = self.group_path.copy()
         self.process_time = time.time()
-
-        # Start with the configured chunk size
-        current_chunk_size = self.n_jobs
-        remaining_groups = self.group_path.copy()
-
-        # with tqdm(total=len(remaining_groups), desc="Processing groups") as pbar:
-        #     while remaining_groups:
-        #         # Take the next chunk of groups
-        #         current_batch = remaining_groups[:current_chunk_size]
-        #         remaining_groups = remaining_groups[current_chunk_size:]
-
-        #         self.log.info(f"Processing batch of {len(current_batch)} groups (chunk size: {current_chunk_size})")
-
-        #         # Process the batch
-        #         batch_start_time = time.time()
-
-        #         # pool = Pool(processes=self.n_jobs, maxtasksperchild=self.n_jobs)
-        #         batch_results = Parallel(n_jobs=self.n_jobs, backend="multiprocessing", verbose=100)(
-        #          delayed(self.process_worker)(input_files) for input_files in current_batch
-        #         )
-
-        #         # Filter valid results and add to processed files
-        #         valid_results = [r[0] for r in batch_results if r[0] is not None]
-        #         self.files_proc.extend(valid_results)
-
-        #         # Update corresponding files dictionary
-        #         for result in batch_results:
-        #             if result[0] is not None:
-        #                 self.corresponding_files[result[2]] = result[1]
-
-        #         # Update progress bar
-        #         pbar.update(len(current_batch))
-
-        #         # Calculate batch processing statistics
-        #         batch_end_time = time.time()
-        #         batch_time = batch_end_time - batch_start_time
-        #         batch_success_rate = len(valid_results) / len(current_batch) if current_batch else 0
-
-        #         self.log.info(
-        #             f"Batch processed in {batch_time:.2f}s with {len(valid_results)}/{len(current_batch)} "
-        #             f"successful ({batch_success_rate*100:.1f}%)"
-        #         )
-        #         # pool.close()
-        #         # pool.join()
-        #         gc.collect()
 
         self.files_proc = Parallel(n_jobs=self.n_jobs, verbose=100)(
             delayed(self.process_worker)(input_files) for input_files in self.group_path

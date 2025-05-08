@@ -5,6 +5,9 @@ Grid management functions for Lidar processing.
 import numpy as np
 import warnings
 from collections import deque
+import os, glob
+from .visualization import plot_grouped_tiles
+
 
 def construct_matrix_coordinates(list_tiles):
     """
@@ -36,7 +39,7 @@ def construct_grid(coords):
     ----------
     coords : list
         List of coordinates to construct the grid from.
-    
+
     Returns:
     -------
     grid : numpy.ndarray
@@ -66,7 +69,7 @@ def construct_grid(coords):
     height = len(y_indices)
     width = len(x_indices)
     grid = np.zeros((height, width), dtype=int)
-    
+
     for x, y in coords:
         i = y_indices[y]
         j = x_indices[x]
@@ -74,7 +77,7 @@ def construct_grid(coords):
             grid[i, j] = 1  # 1 = tile present
         else:
             warnings.warn(f"Tile already present at position ({i}, {j}): {x}, {y}")
-            
+
     return grid, (index_to_x, index_to_y), (x_indices, y_indices)
 
 
@@ -90,7 +93,7 @@ def get_coords(i, j, indexes):
         Column index in the grid.
     indexes : tuple
         Tuple containing two dictionaries for mapping coordinates to indices and vice versa.
-        
+
     Returns:
     -------
     tuple
@@ -104,7 +107,7 @@ def get_coords(i, j, indexes):
 def get_adjacent(i, j, mask):
     """
     Get adjacent cells in a grid that match a mask.
-    
+
     Parameters:
     ----------
     i : int
@@ -113,7 +116,7 @@ def get_adjacent(i, j, mask):
         Column index in the grid.
     mask : numpy.ndarray
         Boolean mask indicating valid cells.
-        
+
     Returns:
     -------
     generator
@@ -148,7 +151,7 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1):
     n : int
         Size of the groups to form. If -1, all tiles are grouped and if 0, no grouping is done.
         Default is -1.
-        
+
     Returns
     -------
     list
@@ -169,7 +172,7 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1):
             ]
         ]
         return groups
-        
+
     # Group tiles into components of size <= n
     for i in range(grid.shape[0]):
         for j in range(grid.shape[1]):
@@ -188,5 +191,53 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1):
                             component.append((ni, nj))
 
                 groups.append([get_coords(i, j, indexes) for i, j in component])
-                
+
     return groups
+
+
+def select_group_tiles(
+    tiles2coord,
+    output_dir_uncompress,
+    tilesingroup=4,
+    original=True,
+    plot_file=None,
+    log=None,
+):
+    """
+    Select and group tiles based on their coordinates.
+    """
+
+    coords = construct_matrix_coordinates(tiles2coord, original=original)
+    grid, indexes, indices = construct_grid(coords)
+    groups = group_adjacent_tiles_by_n(grid, indexes, n=tilesingroup)
+    group_path = _maps_group2tilespath(groups, output_dir_uncompress, log)
+    if plot_file is not None:
+        plot_grouped_tiles(grid, groups, indices, output_file=plot_file)
+    return group_path
+
+
+def _maps_group2tilespath(groups, output_dir_uncompress, log):
+    """
+    Create a mapping of group IDs to tile paths.
+    """
+    all_tiles = []
+    for group in groups:
+        group_paths = []
+        for tile in group:
+            try:
+                matching_files = glob.glob(
+                    os.path.join(
+                        output_dir_uncompress,
+                        "**",
+                        f"*{tile[0]}*{tile[1]}*.las",
+                    ),
+                    recursive=True,
+                )
+                if matching_files:
+                    group_paths.append(matching_files[0])
+            except Exception as e:
+                log.error(f"Error mapping tile {tile}: {e}")
+                group_paths.append(None)
+        group_paths = [path for path in group_paths if path is not None]
+        all_tiles.append(group_paths)
+    return all_tiles
