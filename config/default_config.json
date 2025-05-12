@@ -12,7 +12,7 @@
     "n_jobs": 1
   },
   "pdal_pipeline": {
-    "pipeline": [
+    "phase_1": [
       {
         "type": "filters.elm"
       },
@@ -30,11 +30,17 @@
         "threshold": 0.2
       },
       {
-        "type": "filters.sample",
-        "radius": 0
+        "type": "filters.voxeldownsize",
+        "cell": 0.02
+      }
+    ],
+    "phase_2": [
+      {
+        "type": "filters.merge"
       },
       {
-        "type": "filters.hag_delaunay"
+        "type": "filters.hag_nn",
+        "count": 80
       },
       {
         "type": "filters.range",

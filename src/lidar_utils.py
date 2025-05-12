@@ -8,133 +8,71 @@ import tempfile
 import subprocess
 import logging
 
-import gc
 import numpy as np
 import pdal
-import os
-import json
-import logging
-import tempfile
-import subprocess
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from tqdm import tqdm
+from copy import deepcopy
 
 
-def create_pdal_pipeline_phase1(input_file, output_file):
+def create_pdal_pipeline(input_file, output_file, pipeline=None, phase="phase_1"):
     """
-    Crée la première phase du pipeline PDAL pour traiter chaque tuile individuellement.
-    Cette phase réduit la taille des données et nettoie les points aberrants.
+    Crée ou modifie une phase du pipeline PDAL (phase_1 ou phase_2) pour traiter chaque tuile individuellement.
 
     Parameters:
     ----------
-    input_file : str
-        Chemin du fichier LAS/LAZ d'entrée.
+    input_file : str or list of str
+        Chemin du fichier LAS/LAZ d'entrée ou liste de chemins.
     output_file : str
-        Chemin du fichier de sortie pour la phase 1.
+        Chemin du fichier de sortie pour la phase spécifiée.
+    pipeline : dict, optional
+        Pipeline PDAL existant à modifier. Si None, un nouveau pipeline est créé.
+    phase : str
+        Nom de la phase à traiter ('phase_1' ou 'phase_2').
 
     Returns:
     -------
     dict
-        Configuration du pipeline PDAL phase 1.
+        Configuration du pipeline PDAL pour la phase spécifiée.
     """
-    pipeline = {
-        "pipeline": [
+
+    if pipeline is None:
+        pipeline = {}
+
+    if phase not in pipeline:
+        pipeline[phase] = []
+
+    # Nettoyer la phase des anciens readers et writers
+    pipeline[phase] = [
+        p
+        for p in pipeline[phase]
+        if p.get("type") not in ["readers.las", "writers.las"]
+    ]
+
+    # Ajouter les readers
+    if isinstance(input_file, str):
+        pipeline[phase].insert(
+            0,
             {
                 "type": "readers.las",
                 "filename": input_file,
                 "spatialreference": "EPSG:2154",
             },
-            {"type": "filters.elm"},
-            {
-                "type": "filters.outlier",
-                "method": "statistical",
-                "mean_k": 40,
-                "multiplier": 1.5,
-            },
-            {
-                "type": "filters.csf",
-                "resolution": 0.75,
-                "rigidness": 1,
-                "iterations": 800,
-                "threshold": 0.2,
-            },
-            {
-                "type": "filters.voxeldownsize",
-                "cell": 0.02,  # 2cm en X,Y et Z
-            },
-            {
-                "type": "writers.las",
-                "filename": output_file,
-                "compression": "false",
-                "minor_version": "4",
-                "forward": "all",
-            },
-        ]
-    }
-
-    return pipeline
-
-
-def create_pdal_pipeline_phase2(input_files, output_file):
-    """
-    Crée la deuxième phase du pipeline PDAL pour fusionner les tuiles prétraitées
-    et appliquer les traitements qui nécessitent une vue globale.
-
-    Parameters:
-    ----------
-    input_files : list
-        Liste des fichiers LAS/LAZ prétraités par la phase 1.
-    output_file : str
-        Chemin du fichier de sortie final.
-    pdal_pipeline_template : list, optional
-        Modèle pour les étapes du pipeline PDAL (phase 2 uniquement).
-    quality_level : dict, optional
-        Paramètres de niveau de qualité à appliquer.
-
-    Returns:
-    -------
-    dict
-        Configuration du pipeline PDAL phase 2.
-    """
-    pipeline = {"pipeline": []}
-
-    # Ajouter la première tuile avec readers.las
-    pipeline["pipeline"].append(
-        {
-            "type": "readers.las",
-            "filename": input_files[0],
-            "spatialreference": "EPSG:2154",
-        }
-    )
-
-    # Ajouter les autres tuiles avec readers.las
-    for file in input_files[1:]:
-        pipeline["pipeline"].append(
-            {"type": "readers.las", "filename": file, "spatialreference": "EPSG:2154"}
         )
+    elif isinstance(input_file, list):
+        for file in reversed(input_file):  # On les insère dans l'ordre d'origine
+            pipeline[phase].insert(
+                0,
+                {
+                    "type": "readers.las",
+                    "filename": file,
+                    "spatialreference": "EPSG:2154",
+                },
+            )
 
-    # Fusionner les tuiles
-    pipeline["pipeline"].append({"type": "filters.merge"})
-
-    # Utiliser hag_nn au lieu de hag_delaunay pour de meilleures performances
-    pipeline["pipeline"].append({"type": "filters.hag_nn", "count": 80})
-
-    # Filtrer par hauteur
-    pipeline["pipeline"].append(
-        {"type": "filters.range", "limits": "HeightAboveGround[0:35]"}
-    )
-
-    # Filtrer par classification
-    pipeline["pipeline"].append(
-        {
-            "type": "filters.expression",
-            "expression": "((Classification >= 2) && (Classification <= 5))",
-        }
-    )
-
-    # Ajout de l'étape d'écriture
-    pipeline["pipeline"].append(
+    # Ajouter le writer
+    pipeline[phase].append(
         {
             "type": "writers.las",
             "filename": output_file,
@@ -145,10 +83,10 @@ def create_pdal_pipeline_phase2(input_files, output_file):
         }
     )
 
-    return pipeline
+    return pipeline[phase]
 
 
-def process_single_tile(input_file, temp_dir, log=None):
+def process_single_tile(input_file, temp_dir, log=None, pipeline=None):
     """
     Traite une seule tuile LiDAR avec la phase 1 du pipeline.
 
@@ -160,6 +98,8 @@ def process_single_tile(input_file, temp_dir, log=None):
         Répertoire temporaire pour stocker le résultat.
     log : logging.Logger, optional
         Instance de logger.
+    pipeline : dict, optional
+        Pipeline PDAL à utiliser.
 
     Returns:
     -------
@@ -173,7 +113,9 @@ def process_single_tile(input_file, temp_dir, log=None):
     output_file = os.path.join(temp_dir, f"phase1_{basename}")
 
     # Créer le pipeline phase 1
-    pipeline_config = create_pdal_pipeline_phase1(input_file, output_file)
+    pipeline_config = create_pdal_pipeline(
+        input_file, output_file, pipeline=deepcopy(pipeline), phase="phase_1"
+    )
 
     # Exécuter le pipeline
     success = run_pdal_pipeline(pipeline_config, current_log)
@@ -244,6 +186,7 @@ def run_pdal_pipeline(pipeline_config, log=None):
 def process_tiles_two_phase(
     input_files,
     output_file,
+    pipeline=None,
     n_jobs=None,
     log=None,
 ):
@@ -262,7 +205,8 @@ def process_tiles_two_phase(
         Nombre de processus parallèles (par défaut: nombre de CPU - 2).
     log : logging.Logger, optional
         Instance de logger.
-
+    pipeline : dict, optional
+        Pipeline PDAL à utiliser.
     Returns:
     -------
     bool
@@ -289,7 +233,10 @@ def process_tiles_two_phase(
         with ProcessPoolExecutor(max_workers=n_jobs) as executor:
             # Créer une fonction partielle avec les arguments fixes
             process_func = partial(
-                process_single_tile, temp_dir=phase1_temp_dir, log=current_log
+                process_single_tile,
+                temp_dir=phase1_temp_dir,
+                log=current_log,
+                pipeline=deepcopy(pipeline),
             )
 
             # Soumettre les tâches et collecter les résultats
@@ -312,7 +259,9 @@ def process_tiles_two_phase(
         current_log.info("Démarrage de la phase 2: fusion et traitement global")
 
         # Créer le pipeline de phase 2
-        pipeline_config = create_pdal_pipeline_phase2(processed_files, output_file)
+        pipeline_config = create_pdal_pipeline(
+            processed_files, output_file, pipeline=deepcopy(pipeline), phase="phase_2"
+        )
 
         # Exécuter le pipeline de phase 2
         if not run_pdal_pipeline(pipeline_config, current_log):
@@ -323,84 +272,6 @@ def process_tiles_two_phase(
             f"Traitement en deux phases terminé avec succès. Résultat: {output_file}"
         )
         return True
-
-
-def create_pdal_pipeline(
-    input_files, output_file, pdal_pipeline_template=None, quality_level=None
-):
-    """
-    Create a PDAL pipeline configuration from template.
-
-    Parameters:
-    ----------
-    input_files : list
-        List of input LAS/LAZ files.
-    output_file : str
-        Output file path.
-    pdal_pipeline_template : list, optional
-        Template for PDAL pipeline stages.
-    quality_level : dict, optional
-        Quality level parameters to apply.
-
-    Returns:
-    -------
-    dict
-        PDAL pipeline configuration.
-    """
-    # Start with base pipeline
-    pipeline = {"pipeline": []}
-
-    # Add reader stage for each input file or use a merged reader
-    if len(input_files) == 1:
-        pipeline["pipeline"].append({"type": "readers.las", "filename": input_files[0]})
-    else:
-        pipeline["pipeline"] = [
-            {
-                "type": "readers.las",
-                "filename": input_files[0],
-                "spatialreference": "EPSG:2154",
-            }
-        ]
-
-        # Ajouter les autres fichiers avec readers.las
-        for file in input_files[1:]:
-            pipeline["pipeline"].append(
-                {
-                    "type": "readers.las",
-                    "filename": file,
-                    "spatialreference": "EPSG:2154",
-                }
-            )
-
-        # Ajouter une étape de fusion si nécessaire
-        pipeline["pipeline"].append({"type": "filters.merge"})
-    # Deep copy the pipeline to avoid modifying the template
-    import copy
-
-    pipeline_stages = copy.deepcopy(pdal_pipeline_template or [])
-
-    # Update the thin_radius in the filters.sample stage if quality level is specified
-    if quality_level and quality_level["thin_radius"] is not None:
-        for stage in pipeline_stages["pipeline"]:
-            if stage["type"] == "filters.sample":
-                stage["radius"] = quality_level["thin_radius"]
-                break
-
-    # Add all pipeline stages
-    pipeline["pipeline"].extend(pipeline_stages["pipeline"])
-
-    # Add writer stage
-    pipeline["pipeline"].append(
-        {
-            "type": "writers.las",
-            "filename": output_file,
-            "compression": "false",
-            "minor_version": "4",
-            "forward": "all",
-        }
-    )
-
-    return pipeline
 
 
 def construct_numpy_dtype(keep_variables, data_type, data_shape):
@@ -421,45 +292,6 @@ def construct_numpy_dtype(keep_variables, data_type, data_shape):
     return new_data
 
 
-def convert_las_to_numpy(las_file):
-    """
-    Convert a LAS file to a numpy array.
-    """
-    pipeline = pdal.Pipeline(
-        json.dumps(
-            {
-                "pipeline": [
-                    {
-                        "type": "readers.las",
-                        "filename": las_file,
-                        "spatialreference": "EPSG:2154",
-                    }
-                ]
-            }
-        )
-    )
-    pipeline.execute()
-    return pipeline.arrays[0]
-
-
-def selected_las2npy(las_file, output_file, keep_variables):
-    """
-    Extract specific fields from a LAS file and save to a numpy file.
-    """
-    # Read the LAS file
-    data = convert_las_to_numpy(las_file)
-    selected_data = construct_numpy_dtype(keep_variables, data.dtype, data.shape[0])
-    for var in selected_data.dtype.names:
-        selected_data[var] = data[var]
-    # Save to a numpy file
-    np.save(output_file, selected_data)
-    del data
-    del selected_data
-    gc.collect()
-    return 1
-
-
-# Chemin vers votre fichier LAS
 def las2npy_chunk(las_file, output_file, keep_variables, chunk_size=1000000):
     # Taille du chunk (ajustez selon votre mémoire disponible)
     chunk_size = 1000000  # par exemple 1 million de points par chunk

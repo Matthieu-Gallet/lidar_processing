@@ -14,7 +14,7 @@ class MemoryMonitor:
     """
 
     def __init__(
-        self, threshold_mb=8000, critical_threshold_mb=9500, update_interval=1
+        self, threshold_mb=None, critical_threshold_mb=None, update_interval=1
     ):
         """
         Initialize memory monitor.
@@ -28,8 +28,16 @@ class MemoryMonitor:
         update_interval : float
             Interval in seconds between memory checks.
         """
-        self.threshold_mb = threshold_mb
-        self.critical_threshold_mb = critical_threshold_mb
+        self.threshold_mb = (
+            0.9 * self._estimate_memory_limit()
+            if threshold_mb is None
+            else threshold_mb
+        )
+        self.critical_threshold_mb = (
+            0.975 * self._estimate_memory_limit()
+            if critical_threshold_mb is None
+            else critical_threshold_mb
+        )
         self.update_interval = update_interval
         self.running = False
         self.thread = None
@@ -56,6 +64,11 @@ class MemoryMonitor:
         self.running = False
         if self.thread:
             self.thread.join(timeout=2)
+
+    def _estimate_memory_limit(self):
+        """Estimate memory limit based on system memory."""
+        system_memory = psutil.virtual_memory().total / (1024 * 1024)  # MB
+        return int(system_memory)
 
     def _monitor_memory(self):
         """Memory monitoring thread function."""
@@ -116,25 +129,3 @@ class MemoryMonitor:
             return 0.0
 
         return (last_mem - first_mem) / time_diff
-
-    def should_reduce_batch_size(self) -> bool:
-        """Check if batch size should be reduced based on memory usage."""
-        # Check if we're approaching the threshold with a rising trend
-        trend = self.get_trend()
-        approaching_threshold = self.current_memory > self.threshold_mb * 0.8
-
-        return (
-            self.warning_triggered
-            or self.critical_triggered
-            or (approaching_threshold and trend > 10)
-        )  # Rising by 10MB/s
-
-    def should_increase_batch_size(self) -> bool:
-        """Check if batch size can be increased based on memory usage."""
-        trend = self.get_trend()
-        return (
-            self.current_memory < self.threshold_mb * 0.5
-            and trend < 5
-            and not self.warning_triggered
-            and not self.critical_triggered
-        )

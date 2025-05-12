@@ -147,8 +147,8 @@ class LidarProcessor:
     def _estimate_memory_limit(self):
         """Estimate memory limit based on system memory."""
         system_memory = psutil.virtual_memory().total / (1024 * 1024)  # MB
-        # Use 75% of available memory as a default limit
-        return int(system_memory * 0.75 / self.n_jobs)
+        # Use 85% of available memory as a default limit
+        return int(system_memory / self.n_jobs)
 
     def uncompress_lidar(self, lidar_list_tiles, area_of_interest=None):
         """
@@ -280,9 +280,11 @@ class LidarProcessor:
                 return (name_out, input_files, basename)
 
         # Start memory tracking
-        tracemalloc.start()
-        process_pid = psutil.Process(os.getpid())
-        mem_before = process_pid.memory_info().rss / (1024 * 1024)
+        memory_tracker = MemoryMonitor(
+            threshold_mb=self.memory_limit * 0.9,
+            critical_threshold_mb=self.memory_limit * 0.975,
+        )
+        memory_tracker.start()
 
         # Prepare output paths
         diff_dir = os.path.relpath(
@@ -296,116 +298,74 @@ class LidarProcessor:
             "processed_" + basename + ".npy",
         )
 
-        # Try processing with different quality levels
-        for quality_idx, quality_level in enumerate(self.options["quality_levels"]):
-            if quality_idx < self.current_quality_level:
-                continue  # Skip higher quality levels if we've already degraded
+        success_try = True
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Définir le fichier de sortie final
+                temp_las_output = os.path.join(temp_dir, f"processed_{basename}.las")
 
-            # Log attempt with quality level
-            quality_name = quality_level["level"]
+                # Utiliser la nouvelle fonction de traitement en deux phases
+                success = process_tiles_two_phase(
+                    input_files=input_files,
+                    output_file=temp_las_output,
+                    pipeline=self.pipeline,
+                    n_jobs=None,  # Utilisera CPU-2 par défaut
+                    log=current_log,
+                )
+
+                if not success:
+                    raise Exception(
+                        "L'exécution du pipeline PDAL à deux phases a échoué"
+                    )
+
+                las2npy_chunk(
+                    temp_las_output,
+                    name_out,
+                    self.options["keep_variables"],
+                    chunk_size=1000000,
+                )
+                # shutil.move(npy_output, name_out)
+
+            # Clean up memory
+            gc.collect()
+
+        except Exception as e:
+            success_try = False
+            current_log.warning(f"Failed to process {basename}: {e}")
+            self.status.mark_failed(basename)
+            return (None, None, None)
+
+        # Track memory and mark as successful if processing succeeded
+        if success_try:
             current_log.info(
-                f"Processing {basename} with quality level: {quality_name}"
+                "=" * 25 + f" ✅ Group {basename} processed successfully " + "=" * 25
             )
-            # Process data using PDAL
-            success_try = True
-            try:
-                # Create temp directory for intermediate outputs
-                # with tempfile.TemporaryDirectory() as temp_dir:
-                #     # Define temporary output LAS file
-                #     temp_las_output = os.path.join(
-                #         temp_dir, f"processed_{basename}.las"
-                #     )
+            current_log.info(
+                f"Time: {time.time()-start_time:.2f}s"
+                f"Memory: {memory_tracker.current_memory:.2f} MB"
+                f"Peak Memory: {memory_tracker.peak_memory:.2f} MB"
+                f"Trend: {memory_tracker.get_trend():.2f} MB/s"
+            )
+            self.remaining_groups.remove(input_files)
+            percentage = (
+                (len(self.group_path) - len(self.remaining_groups))
+                * 100
+                / len(self.group_path)
+            )
+            current_log.info(
+                f"Progress: {percentage:.2f}% ({len(self.group_path) - len(self.remaining_groups)}/{len(self.group_path)})"
+            )
+            # Mark as processed in status tracker
+            self.corresponding_files[basename] = input_files
+            check = self._save_checkpoint(basename)
+            current_log.info(f"Checkpoint saved: {True if check else False}")
+            self.status.mark_processed(basename)
+            current_log.info("=" * 50)
 
-                #     # Create PDAL pipeline configuration
-
-                #     pipeline_config = create_pdal_pipeline(
-                #         input_files,
-                #         temp_las_output,
-                #         self.pipeline,
-                #         quality_level["thin_radius"],
-                #     )
-                #     if not run_pdal_pipeline(pipeline_config, current_log):
-                #         raise Exception("PDAL pipeline execution failed")
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    # Définir le fichier de sortie final
-                    temp_las_output = os.path.join(
-                        temp_dir, f"processed_{basename}.las"
-                    )
-
-                    # Utiliser la nouvelle fonction de traitement en deux phases
-                    success = process_tiles_two_phase(
-                        input_files=input_files,
-                        output_file=temp_las_output,
-                        n_jobs=None,  # Utilisera CPU-2 par défaut
-                        log=current_log,
-                    )
-
-                    if not success:
-                        raise Exception(
-                            "L'exécution du pipeline PDAL à deux phases a échoué"
-                        )
-                        # Move the temporary output file to the final destination
-
-                    # Move the output file to the final destination
-                    npy_output = temp_las_output.replace(".las", ".npy")
-                    las2npy_chunk(
-                        temp_las_output,
-                        npy_output,
-                        self.options["keep_variables"],
-                        chunk_size=1000000,
-                    )
-
-                    shutil.move(npy_output, name_out)
-
-                # Clean up memory
-                gc.collect()
-
-            except Exception as e:
-                success_try = False
-                current_log.warning(
-                    f"Failed to process {basename} with quality level {quality_level['level']}: {e}"
-                )
-                tracemalloc.stop()
-
-                # If we've reached the last quality level, mark as failed
-                if quality_idx == len(self.options["quality_levels"]) - 1:
-                    current_log.error(f"All quality levels failed for {basename}")
-                    self.status.mark_failed(basename)
-                    return (None, None, None)
-
-            # Track memory and mark as successful if processing succeeded
-            if success_try:
-                current_log.info(
-                    "=" * 25
-                    + f" ✅ Group {basename} processed successfully "
-                    + "=" * 25
-                )
-                mem_after = process_pid.memory_info().rss / (1024 * 1024)
-                current_log.info(
-                    f"Quality: {quality_name}, "
-                    f"Memory: Before={mem_before:.2f}MB, After={mem_after:.2f}MB, Diff={mem_after - mem_before:.2f}MB, "
-                    f"Time: {time.time()-start_time:.2f}s"
-                )
-                self.remaining_groups.remove(input_files)
-                percentage = (
-                    (len(self.group_path) - len(self.remaining_groups))
-                    * 100
-                    / len(self.group_path)
-                )
-                current_log.info(
-                    f"Progress: {percentage:.2f}% ({len(self.group_path) - len(self.remaining_groups)}/{len(self.group_path)})"
-                )
-                # Mark as processed in status tracker
-                self.corresponding_files[basename] = input_files
-                check = self._save_checkpoint(basename)
-                current_log.info(f"Checkpoint saved: {True if check else False}")
-                self.status.mark_processed(basename)
-                current_log.info("=" * 50)
-
-                return (name_out, input_files, basename)
-
-        # This should not be reached, but just in case
-        return (None, None, None)
+            # Stop memory tracking
+            memory_tracker.stop()
+            memory_tracker = None
+            return (name_out, input_files, basename)
 
     def process_lidar(self):
         """
@@ -459,9 +419,6 @@ class LidarProcessor:
         )
         self.memory_monitor.start()
 
-        # Process groups in adaptive batches
-        self.files_proc = []
-
         self.remaining_groups = self.group_path.copy()
         self.process_time = time.time()
 
@@ -475,7 +432,9 @@ class LidarProcessor:
         )
         self.files_proc = self.files_proc_valid
         self.log.info(f"Processing time: {time.time() - self.process_time:.2f} seconds")
-
+        self.log.info(f"Memory usage: {self.memory_monitor.current_memory:.2f} MB")
+        self.log.info(f"Peak memory usage: {self.memory_monitor.peak_memory:.2f} MB")
+        self.log.info(f"Memory trend: {self.memory_monitor.get_trend():.2f} MB/s")
         # Force garbage collection
         gc.collect()
 
@@ -507,14 +466,6 @@ class LidarProcessor:
                         "processed_files": len(self.group_path)
                         - len(self.remaining_groups),
                         "total_files": len(self.group_path),
-                        "quality_level": self.options["quality_levels"][
-                            self.current_quality_level
-                        ]["level"],
-                        "memory_peak": (
-                            self.memory_monitor.peak_memory
-                            if self.memory_monitor
-                            else None
-                        ),
                         "basename": basename if basename else None,
                     },
                     f,
@@ -569,22 +520,11 @@ class LidarProcessor:
             self.process_lidar()
             self.log.info("-" * 60)
             self.log.info(f"Phase 2 completed in {time.time() - t_process:.2f} seconds")
-
             self.log.info("=" * 80)
             self.log.info(f"Pipeline completed in {time.time() - t_start:.2f} seconds")
-
-            # Print final statistics
-            quality_level = self.options["quality_levels"][self.current_quality_level][
-                "level"
-            ]
             self.log.info(
                 f"Processed {len(self.files_proc)}/{len(self.group_path)} groups successfully"
             )
-            self.log.info(f"Final quality level used: {quality_level}")
-            if self.memory_monitor:
-                self.log.info(
-                    f"Peak memory usage: {self.memory_monitor.peak_memory:.2f} MB"
-                )
             self.log.info("=" * 80)
 
         except Exception as e:
