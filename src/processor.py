@@ -309,7 +309,8 @@ class LidarProcessor:
                     input_files=input_files,
                     output_file=temp_las_output,
                     pipeline=self.pipeline,
-                    n_jobs=None,  # Utilisera CPU-2 par défaut
+                    # none if cpu lowr than 4
+                    n_jobs=None if os.cpu_count() < 24 else self.n_jobs,
                     log=current_log,
                 )
 
