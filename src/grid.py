@@ -9,7 +9,7 @@ import os, glob
 from .visualization import plot_grouped_tiles
 
 
-def construct_matrix_coordinates(list_tiles):
+def construct_matrix_coordinates(list_tiles, original=True):
     """
     Construct a matrix of coordinates from a list of tiles.
 
@@ -25,7 +25,10 @@ def construct_matrix_coordinates(list_tiles):
     """
     coords = []
     for tile in list_tiles:
-        coord = tile.split("_")[3:5]  # Using indices 3:5 from your updated function
+        if original:
+            coord = tile.split("_")[2:4]
+        else:
+            coord = tile.split("_")[3:5]  # Using indices 3:5 from your updated function
         coords.append(np.array(coord, dtype=int))
     coords = np.array(coords)
     return coords
@@ -54,11 +57,14 @@ def construct_grid(coords):
     xs = np.array(xs, dtype=int)
     ys = np.array(ys, dtype=int)
 
-    x_indices = {
-        i: x for i, x in zip(np.arange(xs.min(), xs.max() + 1), np.arange(0, len(xs)))
-    }
+    x_x = np.arange(xs.min(), xs.max() + 1)
+    y_y = np.arange(ys.min(), ys.max() + 1)
+
+    x_indices = {i: x for i, x in zip(x_x, np.arange(0, len(x_x)))}
     y_indices = {
-        i: y for i, y in zip(np.arange(ys.min(), ys.max() + 1), np.arange(0, len(ys)))
+        # i: y for i, y in zip(np.arange(ys.min(), ys.max() + 1), np.arange(0, len(ys)))
+        i: y
+        for i, y in zip(y_y, np.arange(0, len(y_y)))
     }
 
     # Inverse mapping to retrieve coords later

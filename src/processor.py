@@ -21,6 +21,13 @@ import shutil
 from .uncompress import uncompress_crop_tiles
 from .grid import select_group_tiles
 from .utils import init_logger, generate_hash
+from .lidar_utils import (
+    create_pdal_pipeline,
+    run_pdal_pipeline,
+    selected_las2npy,
+    process_tiles_two_phase,
+    las2npy_chunk,
+)
 
 from .monitoring import MemoryMonitor
 from .status import ProcessingStatus
@@ -47,7 +54,7 @@ class LidarProcessor:
         n_jobs=1,
         n_jobs_uncompress=1,
         memory_limit=None,
-        **kwargs,
+        pipeline=None,
     ):
         """
         Initialize the LiDAR processor.
@@ -76,7 +83,8 @@ class LidarProcessor:
         self.tiles = glob.glob(os.path.join(self.path, "**/*.laz"), recursive=True)
         self.output_dir = output_dir
         self.options = {"keep_variables": keep_variables}
-        self.options["thin_radius"] = kwargs.get("thin_radius", None)
+        self.pipeline = pipeline
+        self.options["thin_radius"] = None
         self.options["quality_levels"] = [
             {"level": "high", "thin_radius": None},
             {"level": "medium", "thin_radius": 0.5},
@@ -86,7 +94,6 @@ class LidarProcessor:
         self.n_jobs_uncompress = min(n_jobs_uncompress, os.cpu_count() or 1)
         self.n_jobs = min(n_jobs, os.cpu_count() or 1)
         self.memory_limit = memory_limit or self._estimate_memory_limit()
-        self.kwargs = kwargs
         self.files_unc = None
         self.tiles_uncomp = None
         self.memory_monitor = None
@@ -188,6 +195,8 @@ class LidarProcessor:
             self.log.info("All tiles already uncompressed, skipping this step")
             self.tiles_uncomp = existing_files
             return
+        else:
+            self.tiles_uncomp = []
 
         results = Parallel(n_jobs=self.n_jobs_uncompress, verbose=100)(
             delayed(uncompress_crop_tiles)(
@@ -228,7 +237,7 @@ class LidarProcessor:
 
     def process_worker(self, input_files):
         """
-        Worker function for processing a group of tiles.
+        Worker function for processing a group of tiles using PDAL.
 
         Parameters:
         ----------
@@ -240,7 +249,7 @@ class LidarProcessor:
         tuple
             (output path, input files, basename) or (None, None, None) if processing failed.
         """
-        # Initialiser un logger spécifique au worker si self.log est None
+        # Initialize a worker-specific logger if self.log is None
         current_log = (
             self.log if self.log else logging.getLogger(f"worker_{os.getpid()}")
         )
@@ -275,107 +284,78 @@ class LidarProcessor:
         process_pid = psutil.Process(os.getpid())
         mem_before = process_pid.memory_info().rss / (1024 * 1024)
 
-        # Prepare output path
+        # Prepare output paths
         diff_dir = os.path.relpath(
             os.path.dirname(input_files[0]), self.output_dir_uncompress
         )
+        os.makedirs(os.path.join(self.output_dir_proc, diff_dir), exist_ok=True)
+
         name_out = os.path.join(
             self.output_dir_proc,
             diff_dir,
             "processed_" + basename + ".npy",
         )
-        os.makedirs(os.path.dirname(name_out), exist_ok=True)
 
         # Try processing with different quality levels
         for quality_idx, quality_level in enumerate(self.options["quality_levels"]):
             if quality_idx < self.current_quality_level:
                 continue  # Skip higher quality levels if we've already degraded
-                # Apply quality settings
-            modified_kwargs = self.kwargs.copy()
-
-            if quality_level["thin_radius"] is not None:
-                modified_kwargs["thin_radius"] = quality_level["thin_radius"]
 
             # Log attempt with quality level
             quality_name = quality_level["level"]
             current_log.info(
                 f"Processing {basename} with quality level: {quality_name}"
             )
-
-            # Process data using subprocess
+            # Process data using PDAL
             success_try = True
             try:
-                # Create temp directory for subprocess I/O
+                # Create temp directory for intermediate outputs
+                # with tempfile.TemporaryDirectory() as temp_dir:
+                #     # Define temporary output LAS file
+                #     temp_las_output = os.path.join(
+                #         temp_dir, f"processed_{basename}.las"
+                #     )
+
+                #     # Create PDAL pipeline configuration
+
+                #     pipeline_config = create_pdal_pipeline(
+                #         input_files,
+                #         temp_las_output,
+                #         self.pipeline,
+                #         quality_level["thin_radius"],
+                #     )
+                #     if not run_pdal_pipeline(pipeline_config, current_log):
+                #         raise Exception("PDAL pipeline execution failed")
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    # Prepare parameters for read_lidar
-                    params = {
-                        "input_file": input_files,
-                        "keep_variables": self.options["keep_variables"],
-                        **modified_kwargs,
-                    }
-
-                    # Create parameter file
-                    params_file = os.path.join(temp_dir, f"params_{basename}.json")
-                    with open(params_file, "w") as f:
-                        json.dump(params, f)
-
-                    # Create temporary output file for subprocess
-                    temp_output = os.path.join(temp_dir, f"output_{basename}.npy")
-
-                    # import subprocess
-                    # import json
-                    # import tempfile
-
-                    # pipeline = {
-                    #     "pipeline": [
-                    #         {"type": "readers.las", "filename": "input.laz"},
-                    #         {"type": "writers.las", "filename": "output.laz"}
-                    #     ]
-                    # }
-
-                    # # Crée un fichier temporaire JSON
-                    # with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as f:
-                    #     json.dump(pipeline, f)
-                    #     temp_json_path = f.name
-
-                    # # Lance PDAL
-                    # result = subprocess.run(
-                    #     ["pdal", "pipeline", temp_json_path],
-                    #     stdout=subprocess.PIPE,
-                    #     stderr=subprocess.PIPE
-                    # )
-
-                    # print("STDOUT:", result.stdout.decode())
-                    # print("STDERR:", result.stderr.decode())
-
-                    # Execute subprocess
-                    process = subprocess.run(
-                        [sys.executable, script_path, params_file, temp_output],
-                        capture_output=True,
-                        text=True,
-                        check=False,
+                    # Définir le fichier de sortie final
+                    temp_las_output = os.path.join(
+                        temp_dir, f"processed_{basename}.las"
                     )
-                    if process.stdout:
-                        current_log.info(f"Subprocess stdout:\n{process.stdout}")
 
-                    # Check if subprocess was successful
-                    if process.returncode != 0:
-                        error_msg = f"Subprocess failed with code {process.returncode}"
-                        if process.stderr:
-                            error_msg += f":\n{process.stderr}"
-                        raise Exception(error_msg)
+                    # Utiliser la nouvelle fonction de traitement en deux phases
+                    success = process_tiles_two_phase(
+                        input_files=input_files,
+                        output_file=temp_las_output,
+                        n_jobs=None,  # Utilisera CPU-2 par défaut
+                        log=current_log,
+                    )
 
-                    # Check if subprocess was successful
-                    if process.returncode != 0:
-                        raise Exception(f"Subprocess failed: {process.stderr}")
-
-                    # Copy result to final destination
-                    if os.path.exists(temp_output):
-                        shutil.copy(temp_output, name_out)
-                    else:
+                    if not success:
                         raise Exception(
-                            f"Output file {temp_output} not created by subprocess"
+                            "L'exécution du pipeline PDAL à deux phases a échoué"
                         )
+                        # Move the temporary output file to the final destination
+
+                    # Move the output file to the final destination
+                    npy_output = temp_las_output.replace(".las", ".npy")
+                    las2npy_chunk(
+                        temp_las_output,
+                        npy_output,
+                        self.options["keep_variables"],
+                        chunk_size=1000000,
+                    )
+
+                    shutil.move(npy_output, name_out)
 
                 # Clean up memory
                 gc.collect()
@@ -393,7 +373,7 @@ class LidarProcessor:
                     self.status.mark_failed(basename)
                     return (None, None, None)
 
-            # Track memory
+            # Track memory and mark as successful if processing succeeded
             if success_try:
                 current_log.info(
                     "=" * 25
@@ -521,7 +501,7 @@ class LidarProcessor:
             with open(config_file, "a") as f:
                 json.dump(
                     {
-                        "parameters": self.kwargs,
+                        "parameters": self.pipeline,
                         "timestamp": time.strftime("%Y%m%d%H%M%S"),
                         "keep_variables": self.options["keep_variables"],
                         "processed_files": len(self.group_path)

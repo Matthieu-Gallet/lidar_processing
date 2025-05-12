@@ -1,6 +1,6 @@
 {
   "processor_settings": {
-    "group": -1,
+    "group": 10,
     "keep_variables": [
       "X",
       "Y",
@@ -19,10 +19,10 @@
       {
         "type": "filters.outlier",
         "method": "statistical",
-        "mean_k": 40,
-        "multiplier": 1.5
+        "mean_k": 80,
+        "multiplier": 2.5
       },
-            {
+      {
         "type": "filters.csf",
         "resolution": 0.75,
         "rigidness": 1,
@@ -48,7 +48,7 @@
   },
   "paths": {
     "input_path": "/home/mgallet/Documents/DATA/lidar_data",
-    "output_dir": "/home/mgallet/Documents/DATA/LIDAR_TEST",
+    "output_dir": "/media/mgallet/SHARED",
     "lidar_list_tiles": "/home/mgallet/Documents/DATA/TA_programme_LiDAR-HD/TA_programme_lidar_HD_path.shp",
     "area_of_interest": "/home/mgallet/Documents/Herbiland/vegetation/DATA/SHP/Bauges_Belledonne_MB/Emprise_totale_3massifs_EPSG2154.shp"
   }
