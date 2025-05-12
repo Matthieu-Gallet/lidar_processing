@@ -1,6 +1,6 @@
 {
   "processor_settings": {
-    "group": 10,
+    "group": -1,
     "keep_variables": [
       "X",
       "Y",
@@ -12,15 +12,15 @@
     "n_jobs": 1
   },
   "pdal_pipeline": {
-    "pipeline": [
+    "phase_1": [
       {
         "type": "filters.elm"
       },
       {
         "type": "filters.outlier",
         "method": "statistical",
-        "mean_k": 80,
-        "multiplier": 2.5
+        "mean_k": 40,
+        "multiplier": 1.5
       },
       {
         "type": "filters.csf",
@@ -30,11 +30,17 @@
         "threshold": 0.2
       },
       {
-        "type": "filters.sample",
-        "radius": 0
+        "type": "filters.voxeldownsize",
+        "cell": 0.02
+      }
+    ],
+    "phase_2": [
+      {
+        "type": "filters.merge"
       },
       {
-        "type": "filters.hag_delaunay"
+        "type": "filters.hag_nn",
+        "count": 80
       },
       {
         "type": "filters.range",
@@ -48,7 +54,7 @@
   },
   "paths": {
     "input_path": "/home/mgallet/Documents/DATA/lidar_data",
-    "output_dir": "/media/mgallet/SHARED",
+    "output_dir": "/home/mgallet/Documents/DATA/LIDAR_TEST",
     "lidar_list_tiles": "/home/mgallet/Documents/DATA/TA_programme_LiDAR-HD/TA_programme_lidar_HD_path.shp",
     "area_of_interest": "/home/mgallet/Documents/Herbiland/vegetation/DATA/SHP/Bauges_Belledonne_MB/Emprise_totale_3massifs_EPSG2154.shp"
   }

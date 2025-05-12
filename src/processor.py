@@ -3,28 +3,22 @@ Main LiDAR processor class for handling LiDAR data processing pipelines.
 With improved memory management and resource utilization.
 """
 
-import os, sys
+import os
 import glob
 import json
 import time
 import gc
 import traceback
-import tracemalloc
 import psutil
-import subprocess
 import tempfile
 from joblib import Parallel, delayed
 
 import logging
-import shutil
 
 from .uncompress import uncompress_crop_tiles
 from .grid import select_group_tiles
 from .utils import init_logger, generate_hash
 from .lidar_utils import (
-    create_pdal_pipeline,
-    run_pdal_pipeline,
-    selected_las2npy,
     process_tiles_two_phase,
     las2npy_chunk,
 )
@@ -49,11 +43,11 @@ class LidarProcessor:
         self,
         path,
         group=5,
+        sampling_strategy="adjacent",
         output_dir=None,
         keep_variables=None,
         n_jobs=1,
         n_jobs_uncompress=1,
-        memory_limit=None,
         pipeline=None,
     ):
         """
@@ -65,6 +59,8 @@ class LidarProcessor:
             Path to the directory containing LiDAR files.
         group : int
             Number of tiles to process as a group. Default is 5.
+        sampling_strategy : str
+            Sampling strategy for grouping tiles. Default is "adjacent". Can be "random".
         output_dir : str
             Directory to save processed files. Required.
         keep_variables : list
@@ -73,27 +69,19 @@ class LidarProcessor:
             Number of parallel jobs to run. Default is 1.
         n_jobs_uncompress : int
             Number of parallel jobs for uncompressing tiles. Default is 1.
-        memory_limit : int
-            Memory limit per worker in MB. Default is None (no limit).
-        **kwargs : dict
-            Additional parameters for the LiDAR processing.
+        pipeline : dict
+            PDAL pipeline configuration. Default is None.
         """
         self.path = path
         self.group = group
+        self.sampling = sampling_strategy
         self.tiles = glob.glob(os.path.join(self.path, "**/*.laz"), recursive=True)
         self.output_dir = output_dir
-        self.options = {"keep_variables": keep_variables}
+        self.keep_variables = keep_variables
         self.pipeline = pipeline
-        self.options["thin_radius"] = None
-        self.options["quality_levels"] = [
-            {"level": "high", "thin_radius": None},
-            {"level": "medium", "thin_radius": 0.5},
-            {"level": "low", "thin_radius": 1.0},
-            {"level": "minimal", "thin_radius": 2.0},
-        ]
         self.n_jobs_uncompress = min(n_jobs_uncompress, os.cpu_count() or 1)
         self.n_jobs = min(n_jobs, os.cpu_count() or 1)
-        self.memory_limit = memory_limit or self._estimate_memory_limit()
+        self.memory_limit = self._estimate_memory_limit()
         self.files_unc = None
         self.tiles_uncomp = None
         self.memory_monitor = None
@@ -322,7 +310,7 @@ class LidarProcessor:
                 las2npy_chunk(
                     temp_las_output,
                     name_out,
-                    self.options["keep_variables"],
+                    self.keep_variables,
                     chunk_size=1000000,
                 )
                 # shutil.move(npy_output, name_out)
@@ -403,10 +391,11 @@ class LidarProcessor:
             original=original,
             plot_file=plot_file,
             log=self.log,
+            sampling=self.sampling,
         )
-
+        zertert = ztertip
         self.log.info(f"Processing {len(self.group_path)} groups of tiles")
-        self.log.info(f"Keeping variables: {self.options["keep_variables"]}")
+        self.log.info(f"Keeping variables: {self.keep_variables}")
         self._check_existing_files()
 
         if not self.group_path:
@@ -463,7 +452,7 @@ class LidarProcessor:
                     {
                         "parameters": self.pipeline,
                         "timestamp": time.strftime("%Y%m%d%H%M%S"),
-                        "keep_variables": self.options["keep_variables"],
+                        "keep_variables": self.keep_variables,
                         "processed_files": len(self.group_path)
                         - len(self.remaining_groups),
                         "total_files": len(self.group_path),

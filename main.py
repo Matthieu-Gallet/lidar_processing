@@ -10,6 +10,7 @@ if __name__ == "__main__":
     lidar_processor = LidarProcessor(
         path=config["paths"]["input_path"],
         group=config["processor_settings"]["group"],
+        sampling_strategy=config["processor_settings"]["sampling_strategy"],
         output_dir=config["paths"]["output_dir"],
         keep_variables=config["processor_settings"]["keep_variables"],
         n_jobs=config["processor_settings"]["n_jobs"],

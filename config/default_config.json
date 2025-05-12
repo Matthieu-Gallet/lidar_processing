@@ -1,6 +1,7 @@
 {
   "processor_settings": {
-    "group": -1,
+    "group": 5,
+    "sampling_strategy": "random",
     "keep_variables": [
       "X",
       "Y",
@@ -21,13 +22,6 @@
         "method": "statistical",
         "mean_k": 40,
         "multiplier": 1.5
-      },
-      {
-        "type": "filters.csf",
-        "resolution": 0.75,
-        "rigidness": 1,
-        "iterations": 800,
-        "threshold": 0.2
       },
       {
         "type": "filters.voxeldownsize",

@@ -144,7 +144,10 @@ def get_adjacent(i, j, mask):
                 yield ni, nj
 
 
-def group_adjacent_tiles_by_n(grid, indexes, n=-1):
+import random
+
+
+def group_adjacent_tiles_by_n(grid, indexes, n=-1, type_sample="adjacent"):
     """
     Group adjacent tiles in the grid into components of size n.
 
@@ -157,6 +160,8 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1):
     n : int
         Size of the groups to form. If -1, all tiles are grouped and if 0, no grouping is done.
         Default is -1.
+    type_sample : str
+        Type of sampling to use. Can be "adjacent" or "random".
 
     Returns
     -------
@@ -178,26 +183,37 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1):
             ]
         ]
         return groups
+    if type_sample == "adjacent":
+        # Group tiles into components of size <= n
+        for i in range(grid.shape[0]):
+            for j in range(grid.shape[1]):
+                if mask[i, j] and not visited[i, j]:
+                    queue = deque()
+                    queue.append((i, j))
+                    visited[i, j] = True
+                    component = [(i, j)]
 
-    # Group tiles into components of size <= n
-    for i in range(grid.shape[0]):
-        for j in range(grid.shape[1]):
-            if mask[i, j] and not visited[i, j]:
-                queue = deque()
-                queue.append((i, j))
-                visited[i, j] = True
-                component = [(i, j)]
+                    while queue and len(component) < n:
+                        ci, cj = queue.popleft()
+                        for ni, nj in get_adjacent(ci, cj, mask):
+                            if not visited[ni, nj]:
+                                visited[ni, nj] = True
+                                queue.append((ni, nj))
+                                component.append((ni, nj))
 
-                while queue and len(component) < n:
-                    ci, cj = queue.popleft()
-                    for ni, nj in get_adjacent(ci, cj, mask):
-                        if not visited[ni, nj]:
-                            visited[ni, nj] = True
-                            queue.append((ni, nj))
-                            component.append((ni, nj))
+                    groups.append([get_coords(i, j, indexes) for i, j in component])
+    elif type_sample == "random":
+        # Utiliser random.shuffle pour un tirage sans remise
+        random.shuffle(tile_coords)
 
-                groups.append([get_coords(i, j, indexes) for i, j in component])
-
+        # Diviser la liste en groupes de taille n
+        for i in range(0, len(tile_coords), n):
+            # Prendre un groupe de n éléments (ou moins pour le dernier groupe)
+            group = tile_coords[i : i + n]
+            group_coords = [get_coords(i, j, indexes) for i, j in group]
+            groups.append(group_coords)
+    else:
+        raise ValueError("Invalid type_sample. Use 'adjacent' or 'random'.")
     return groups
 
 
@@ -208,14 +224,18 @@ def select_group_tiles(
     original=True,
     plot_file=None,
     log=None,
+    sampling="adjacent",
 ):
     """
     Select and group tiles based on their coordinates.
     """
-
+    print(len(tiles2coord))  # Number of tiles
+    print(tiles2coord)  # List of tiles
     coords = construct_matrix_coordinates(tiles2coord, original=original)
     grid, indexes, indices = construct_grid(coords)
-    groups = group_adjacent_tiles_by_n(grid, indexes, n=tilesingroup)
+    groups = group_adjacent_tiles_by_n(
+        grid, indexes, n=tilesingroup, type_sample=sampling
+    )
     group_path = _maps_group2tilespath(groups, output_dir_uncompress, log)
     if plot_file is not None:
         plot_grouped_tiles(grid, groups, indices, output_file=plot_file)
