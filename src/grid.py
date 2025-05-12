@@ -229,8 +229,7 @@ def select_group_tiles(
     """
     Select and group tiles based on their coordinates.
     """
-    print(len(tiles2coord))  # Number of tiles
-    print(tiles2coord)  # List of tiles
+
     coords = construct_matrix_coordinates(tiles2coord, original=original)
     grid, indexes, indices = construct_grid(coords)
     groups = group_adjacent_tiles_by_n(

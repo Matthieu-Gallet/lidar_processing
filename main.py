@@ -4,7 +4,7 @@ import os, json
 
 if __name__ == "__main__":
 
-    with open("config/default_config.json", "r") as f:
+    with open("config/config_csf.json", "r") as f:
         config = json.load(f)
 
     lidar_processor = LidarProcessor(

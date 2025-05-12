@@ -393,7 +393,6 @@ class LidarProcessor:
             log=self.log,
             sampling=self.sampling,
         )
-        zertert = ztertip
         self.log.info(f"Processing {len(self.group_path)} groups of tiles")
         self.log.info(f"Keeping variables: {self.keep_variables}")
         self._check_existing_files()
