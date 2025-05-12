@@ -21,7 +21,6 @@ from functools import partial
 from tqdm import tqdm
 
 
-
 def create_pdal_pipeline_phase1(input_file, output_file):
     """
     Crée la première phase du pipeline PDAL pour traiter chaque tuile individuellement.
@@ -58,8 +57,8 @@ def create_pdal_pipeline_phase1(input_file, output_file):
                 "resolution": 0.75,
                 "rigidness": 1,
                 "iterations": 800,
-                "threshold": 0.2
-              },
+                "threshold": 0.2,
+            },
             {
                 "type": "filters.voxeldownsize",
                 "cell": 0.02,  # 2cm en X,Y et Z
@@ -142,6 +141,7 @@ def create_pdal_pipeline_phase2(input_files, output_file):
             "compression": "false",
             "minor_version": "4",
             "forward": "all",
+            "extra_dims": "all",
         }
     )
 
@@ -354,15 +354,6 @@ def create_pdal_pipeline(
     if len(input_files) == 1:
         pipeline["pipeline"].append({"type": "readers.las", "filename": input_files[0]})
     else:
-        # # For multiple files, use a merged reader
-        # pipeline["pipeline"].append(
-        #     {
-        #         "type": "readers.merge",
-        #         "inputs": [
-        #             {"type": "readers.las", "filename": file} for file in input_files
-        #         ],
-        #     }
-        # )
         pipeline["pipeline"] = [
             {
                 "type": "readers.las",
@@ -408,68 +399,8 @@ def create_pdal_pipeline(
             "forward": "all",
         }
     )
-    # write pipeline to file
-    # with open("/home/mgallet/Téléchargements/pipeline.json", "w") as f:
-    #     json.dump(pipeline, f, indent=4)
+
     return pipeline
-
-
-# def run_pdal_pipeline(pipeline_config, log=None):
-#     """
-#     Run a PDAL pipeline.
-
-#     Parameters:
-#     ----------
-#     pipeline_config : dict
-#         PDAL pipeline configuration.
-#     log : logging.Logger, optional
-#         Logger instance.
-
-#     Returns:
-#     -------
-#     bool
-#         True if successful, False otherwise.
-#     """
-#     current_log = log or logging.getLogger(f"pdal_runner_{os.getpid()}")
-
-#     # Create a temporary JSON file for the pipeline
-#     with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as f:
-#         json.dump(pipeline_config, f)
-#         pipeline_file = f.name
-
-#     try:
-#         # Run PDAL pipeline
-#         current_log.info(f"Running PDAL pipeline: {pipeline_file}")
-
-#         # Execute PDAL as a subprocess
-#         process = subprocess.run(
-#             ["pdal", "pipeline", pipeline_file],
-#             capture_output=True,
-#             text=True,
-#             check=False,
-#         )
-
-#         # Check for errors
-#         if process.returncode != 0:
-#             current_log.error(f"PDAL pipeline failed (code {process.returncode}):")
-#             current_log.error(process.stderr)
-#             return False
-
-#         # Log stdout if verbose
-#         if process.stdout and len(process.stdout) > 0:
-#             current_log.debug(f"PDAL output: {process.stdout}")
-
-#         return True
-
-#     except Exception as e:
-#         current_log.error(f"Error running PDAL pipeline: {e}")
-#         return False
-#     finally:
-#         # Clean up temporary file
-#         try:
-#             os.unlink(pipeline_file)
-#         except:
-#             pass
 
 
 def construct_numpy_dtype(keep_variables, data_type, data_shape):
@@ -528,62 +459,70 @@ def selected_las2npy(las_file, output_file, keep_variables):
     return 1
 
 
-
-
 # Chemin vers votre fichier LAS
 def las2npy_chunk(las_file, output_file, keep_variables, chunk_size=1000000):
     # Taille du chunk (ajustez selon votre mémoire disponible)
     chunk_size = 1000000  # par exemple 1 million de points par chunk
 
     # Obtenir un échantillon pour connaître la structure des données
-    sample_pipeline = pdal.Pipeline(json.dumps({
-        "pipeline": [
+    sample_pipeline = pdal.Pipeline(
+        json.dumps(
             {
-                "type": "readers.las",
-                "filename": las_file,
-                "spatialreference": "EPSG:2154",
-                "count": 1  # Juste un point pour connaître la structure
+                "pipeline": [
+                    {
+                        "type": "readers.las",
+                        "filename": las_file,
+                        "spatialreference": "EPSG:2154",
+                        "count": 1,  # Juste un point pour connaître la structure
+                    }
+                ]
             }
-        ]
-    }))
+        )
+    )
     sample_pipeline.execute()
-    point_count = sample_pipeline.metadata['metadata']['readers.las']['count']
+    point_count = sample_pipeline.metadata["metadata"]["readers.las"]["count"]
     sample_data = sample_pipeline.arrays[0]
 
     # Initialiser all_data avec notre fonction
     all_data = construct_numpy_dtype(
         keep_variables=keep_variables,
         data_type=sample_data.dtype,
-        data_shape=point_count
+        data_shape=point_count,
     )
 
     # Traiter par morceaux avec tqdm pour la progression
     processed_points = 0
     for start in tqdm(range(0, point_count, chunk_size), desc="Traitement des chunks"):
         count = min(chunk_size, point_count - start)
-        
-        chunk_pipeline = pdal.Pipeline(json.dumps({
-            "pipeline": [
+
+        chunk_pipeline = pdal.Pipeline(
+            json.dumps(
                 {
-                    "type": "readers.las",
-                    "filename": las_file,
-                    "spatialreference": "EPSG:2154",
-                    "start": start,
-                    "count": count
+                    "pipeline": [
+                        {
+                            "type": "readers.las",
+                            "filename": las_file,
+                            "spatialreference": "EPSG:2154",
+                            "start": start,
+                            "count": count,
+                        }
+                    ]
                 }
-            ]
-        }))
-        
+            )
+        )
+
         chunk_pipeline.execute()
         chunk_data = chunk_pipeline.arrays[0]
-        
+
         # Copier chaque dimension d'intérêt dans all_data
         for dim in keep_variables:
             if dim in chunk_data.dtype.names:
-                all_data[dim][processed_points:processed_points+count] = chunk_data[dim]
-        
+                all_data[dim][processed_points : processed_points + count] = chunk_data[
+                    dim
+                ]
+
         processed_points += count
-        
+
         # Libérer la mémoire
         del chunk_data
         del chunk_pipeline

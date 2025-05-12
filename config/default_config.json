@@ -22,7 +22,7 @@
         "mean_k": 40,
         "multiplier": 1.5
       },
-            {
+      {
         "type": "filters.csf",
         "resolution": 0.75,
         "rigidness": 1,
