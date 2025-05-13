@@ -1,6 +1,6 @@
 {
   "processor_settings": {
-    "group": -1,
+    "group": 13,
     "sampling_strategy": "random",
     "keep_variables": [
       "X",

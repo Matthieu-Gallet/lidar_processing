@@ -204,6 +204,13 @@ def group_adjacent_tiles_by_n(grid, indexes, n=-1, type_sample="adjacent"):
                     groups.append([get_coords(i, j, indexes) for i, j in component])
     elif type_sample == "random":
         # Utiliser random.shuffle pour un tirage sans remise
+        tile_coords = [
+            (i, j)
+            for i in range(grid.shape[0])
+            for j in range(grid.shape[1])
+            if grid[i, j] == 1
+        ]
+
         random.shuffle(tile_coords)
 
         # Diviser la liste en groupes de taille n
