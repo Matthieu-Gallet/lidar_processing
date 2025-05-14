@@ -12,6 +12,7 @@ import traceback
 import psutil
 import tempfile
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
 import logging
 
@@ -238,9 +239,7 @@ class LidarProcessor:
             (output path, input files, basename) or (None, None, None) if processing failed.
         """
         # Initialize a worker-specific logger if self.log is None
-        current_log = (
-            self.log if self.log else logging.getLogger(f"worker_{os.getpid()}")
-        )
+        current_log = self.log if self.log else logging.getLogger()
 
         start_time = time.time()
         if not input_files:
@@ -288,7 +287,7 @@ class LidarProcessor:
 
         success_try = True
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory(dir=self.output_dir_proc) as temp_dir:
                 # Définir le fichier de sortie final
                 temp_las_output = os.path.join(temp_dir, f"processed_{basename}.las")
 
@@ -297,8 +296,7 @@ class LidarProcessor:
                     input_files=input_files,
                     output_file=temp_las_output,
                     pipeline=self.pipeline,
-                    # none if cpu lowr than 4
-                    n_jobs=None if os.cpu_count() < 24 else self.n_jobs,
+                    n_jobs=self.n_jobs,
                     log=current_log,
                 )
 
@@ -411,10 +409,7 @@ class LidarProcessor:
         self.remaining_groups = self.group_path.copy()
         self.process_time = time.time()
 
-        self.files_proc = Parallel(n_jobs=self.n_jobs, verbose=100)(
-            delayed(self.process_worker)(input_files) for input_files in self.group_path
-        )
-
+        self.files_proc = [self.process_worker(input_files) for input_files in tqdm(self.group_path)]
         self.files_proc_valid = [r[0] for r in self.files_proc if r[0] is not None]
         self.log.info(
             f"Processed {len(self.files_proc_valid)} groups valid out of {len(self.group_path)}"

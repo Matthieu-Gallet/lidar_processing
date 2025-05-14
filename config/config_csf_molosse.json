@@ -1,0 +1,56 @@
+{
+  "processor_settings": {
+    "group": -1,
+    "sampling_strategy": "random",
+    "keep_variables": [
+      "X",
+      "Y",
+      "Z",
+      "Intensity",
+      "Classification",
+      "HeightAboveGround"
+    ],
+    "n_jobs": 4
+  },
+  "pdal_pipeline": {
+    "phase_1": [
+      {
+        "type": "filters.outlier",
+        "method": "statistical",
+        "mean_k": 40,
+        "multiplier": 2
+      },
+      {
+        "type": "filters.csf",
+        "resolution": 0.2,
+        "rigidness": 3,
+        "iterations": 1000,
+        "threshold": 0.1,
+        "step": 0.5,
+        "ignore": "Classification[7:7]"
+      },
+      {
+        "type": "filters.elm"
+      }
+    ],
+    "phase_2": [
+      {
+        "type": "filters.merge"
+      },
+      {
+        "type": "filters.hag_nn",
+        "count": 100
+      },
+      {
+        "type": "filters.range",
+        "limits": "HeightAboveGround[0:5]"
+      }
+    ]
+  },
+  "paths": {
+    "input_path": "/mnt/crea_camtrap/LIDAR/TEST",
+    "output_dir": "/mnt/sentinel4To/LIDAR_test_CSF_02",
+    "lidar_list_tiles": "/mnt/crea_camtrap/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
+    "area_of_interest": "/mnt/crea_camtrap/LIDAR/SHP/Emprise_totale_3massifs_EPSG2154_V2.shp"
+  }
+}

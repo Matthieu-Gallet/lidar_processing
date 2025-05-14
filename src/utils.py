@@ -52,15 +52,35 @@ def init_logger(output_dir):
     logging.Logger
         Configured logger instance.
     """
+    # Create formatter
+    formatter = logging.Formatter("%(asctime)s:%(levelname)s:%(message)s")
+    
     # Initialize the logger
     time_str = time.strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(output_dir, f"log_{time_str}.txt")
-    logging.basicConfig(
-        filename=log_file,
-        level=logging.INFO,
-        format="%(asctime)s:%(levelname)s:%(message)s",
-    )
-    return logging.getLogger(__name__)
+    
+    # Créer un file handler
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    
+    # Configurer le root logger pour que tous les loggers en héritent
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Supprimer les handlers existants pour éviter les doublons
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Ajouter notre file handler au root logger
+    root_logger.addHandler(file_handler)
+    
+    # Créer le logger spécifique
+    logger = logging.getLogger(__name__)
+    
+    logger.info("Logger initialized successfully")
+    return logger
+
 
 
 def generate_hash(input_list):
