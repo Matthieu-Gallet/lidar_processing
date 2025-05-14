@@ -50,6 +50,7 @@ class LidarProcessor:
         n_jobs=1,
         n_jobs_uncompress=1,
         pipeline=None,
+        crop=False,
     ):
         """
         Initialize the LiDAR processor.
@@ -79,6 +80,7 @@ class LidarProcessor:
         self.tiles = glob.glob(os.path.join(self.path, "**/*.laz"), recursive=True)
         self.output_dir = output_dir
         self.keep_variables = keep_variables
+        self.crop = crop
         self.pipeline = pipeline
         self.n_jobs_uncompress = min(n_jobs_uncompress, os.cpu_count() or 1)
         self.n_jobs = min(n_jobs, os.cpu_count() or 1)
@@ -195,6 +197,7 @@ class LidarProcessor:
                 lidar_list_tiles,
                 area_of_interest,
                 self.log,
+                self.crop
             )
             for input_file in tiles_to_process
         )

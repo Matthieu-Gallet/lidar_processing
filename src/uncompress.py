@@ -5,6 +5,43 @@ import geopandas as gpd
 import gc
 
 
+def load_polygon_from_file(vector_file_path, index=0):
+    """
+    Load a polygon geometry and its CRS from a given vector file.
+
+    Parameters:
+    ----------
+    vector_file_path : str
+        Path to the vector file containing the polygon.
+    index : int, optional
+        Index of the polygon to be loaded (default is 0).
+    Returns:
+    -------
+    tuple
+        containing the Well-Known Text (WKT) representation of the polygon
+        and the coordinate reference system (CRS) as a string.
+    Raises:
+    ------
+    FileNotFoundError
+        If the vector file does not exist.
+    ValueError
+        If the file cannot be read or is not a valid vector file format.    
+    """
+    if not os.path.isfile(vector_file_path):
+        raise FileNotFoundError(f"No such file: '{vector_file_path}'")
+
+    try:
+        gdf = gpd.read_file(vector_file_path)
+    except Exception as e:
+        raise ValueError(
+            f"Unable to read file: {vector_file_path}. Ensure it is a valid vector file format."
+        ) from e
+
+    polygon = gdf.loc[index, "geometry"]
+
+    return polygon.wkt, gdf.crs.to_string()
+
+
 def select_and_save_tiles(
     tuiles_path, parcelle_path, name_file, name_out="temp.shp", crop=False
 ):
@@ -52,12 +89,14 @@ def select_and_save_tiles(
             parcelle.intersection(tuiles.geometry.iloc[0]).to_file(
                 name_out, driver="ESRI Shapefile"
             )
-        return 1
+            return name_out
+        else:
+            return 1
     return 0
 
 
 def uncompress_crop_tiles(
-    root_dir, output_dir, input_file, lidar_list_tiles, area_of_interest, log
+    root_dir, output_dir, input_file, lidar_list_tiles, area_of_interest, log, crop=False
 ):
     """
     Uncompress LiDAR tiles and crop them to the area of interest.
@@ -107,10 +146,14 @@ def uncompress_crop_tiles(
                 tuiles_path=lidar_list_tiles,
                 parcelle_path=area_of_interest,
                 name_file=input_file,
-                crop=False,
+                crop=crop,
             )
             if check_tile == 1:
                 uncompress_lidar(input_file, name_out)
+            elif check_tile != 0:
+                uncompress_lidar(
+                    input_file, name_out, crop = check_tile
+                )
 
             return name_out
 
@@ -119,7 +162,7 @@ def uncompress_crop_tiles(
             return None
 
 
-def uncompress_lidar(input_file, output_file):
+def uncompress_lidar(input_file, output_file, crop=None):
     """
     Uncompress a LAS file using PDAL.
 
@@ -129,33 +172,47 @@ def uncompress_lidar(input_file, output_file):
         Path to the input LAS file.
     output_file : str
         Path to the output LAS file.
+    crop : bool
+        If True, the output will be the intersection of the tile and the area of interest.
+        If False, the output will be the tile itself.
 
     Returns:
     -------
     int
         Returns 1 if the operation is successful.
     """
-    pipeline = pdal.Pipeline(
-        json.dumps(
-            {
+    pipe =  {
                 "pipeline": [
                     {
                         "type": "readers.las",
                         "filename": input_file,
                         "spatialreference": "EPSG:2154",
-                    },
-                    {"type": "filters.range", "limits": "Z[1200:2800]"},
-                    {
-                        "type": "writers.las",
-                        "filename": output_file,
-                        "compression": "false",
-                        "minor_version": "4",
-                        "forward": "all",
-                    },
-                ]
+                    }]}
+    if crop is not None:
+        polygon_wkt, _ = load_polygon_from_file(crop)
+        pipe["pipeline"].append(
+            {
+                "type": "filters.crop",
+                "polygon": polygon_wkt,
             }
         )
+    pipe["pipeline"].append(
+        {
+            "type": "filters.range",
+            "limits": "Z[1200:2800]",
+        }
     )
+    pipe["pipeline"].append(
+        {
+            "type": "writers.las",
+            "filename": output_file,
+            "compression": "false",
+            "minor_version": "4",
+            "forward": "all",
+        }
+    )
+
+    pipeline = pdal.Pipeline(json.dumps(pipe))
     pipeline.execute()
     return 1
 
