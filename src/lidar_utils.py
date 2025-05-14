@@ -214,14 +214,14 @@ def process_tiles_two_phase(
     """
     import multiprocessing
 
-    current_log = log or logging.getLogger("pdal_processor")
+    current_log = log or logging.getLogger()
 
     # Définir le nombre de processus parallèles
     if n_jobs is None:
         n_jobs = max(1, multiprocessing.cpu_count() - 2)
 
     # Créer un répertoire temporaire pour les fichiers intermédiaires
-    with tempfile.TemporaryDirectory() as phase1_temp_dir:
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(output_file)) as phase1_temp_dir:
         current_log.info(
             f"Traitement de {len(input_files)} tuiles en {n_jobs} processus parallèles"
         )
@@ -257,7 +257,6 @@ def process_tiles_two_phase(
 
         # Phase 2: Fusion et traitement global
         current_log.info("Démarrage de la phase 2: fusion et traitement global")
-
         # Créer le pipeline de phase 2
         pipeline_config = create_pdal_pipeline(
             processed_files, output_file, pipeline=deepcopy(pipeline), phase="phase_2"
