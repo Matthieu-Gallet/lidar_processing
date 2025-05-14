@@ -23,15 +23,16 @@
       },
       {
         "type": "filters.smrf",
-        "slope": 0.25,
-        "window": 20,
-        "threshold": 0.6,
-        "cell": 0.5,
-        "scalar": 2,
-        "ignore": "Classification[7:7]"
+        "slope": 0.275,
+        "window": 10,
+        "threshold": 0.3,
+        "scalar": 1.9,
+        "cell": 1,
+        "ignore": "Classification[3:7]"
       },
       {
-        "type": "filters.elm"
+        "type": "filters.elm",
+        "cell": 1
       },
       {
         "type": "filters.hag_nn",
@@ -41,6 +42,10 @@
     "phase_2": [
       {
         "type": "filters.merge"
+      },
+      {
+        "type": "filters.expression",
+        "expression": "((Classification >= 2) && (Classification <= 5))"
       },
       {
         "type": "filters.range",
