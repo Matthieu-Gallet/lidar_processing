@@ -1,6 +1,6 @@
 {
   "processor_settings": {
-    "group": -1,
+    "group": 20,
     "sampling_strategy": "random",
     "keep_variables": [
       "X",
@@ -10,7 +10,7 @@
       "Classification",
       "HeightAboveGround"
     ],
-    "n_jobs": 8,
+    "n_jobs": 10,
     "crop": 1
   },
   "pdal_pipeline": {
@@ -18,8 +18,8 @@
       {
         "type": "filters.outlier",
         "method": "statistical",
-        "mean_k": 20,
-        "multiplier": 2
+        "mean_k": 40,
+        "multiplier": 1.5
       },
       {
         "type": "filters.smrf",
@@ -28,34 +28,30 @@
         "threshold": 0.3,
         "scalar": 1.9,
         "cell": 1,
-        "ignore": "Classification[3:7]"
+        "ignore": "Classification[7:7]"
       },
       {
         "type": "filters.elm",
-        "cell": 1
+        "cell": 3
       },
       {
-        "type": "filters.hag_nn",
-        "count": 20
+        "type": "filters.hag_delaunay",
+        "count": 40
+      },
+      {
+        "type": "filters.range",
+        "limits": "HeightAboveGround[0:35]"
       }
     ],
     "phase_2": [
       {
         "type": "filters.merge"
-      },
-      {
-        "type": "filters.expression",
-        "expression": "((Classification >= 2) && (Classification <= 5))"
-      },
-      {
-        "type": "filters.range",
-        "limits": "HeightAboveGround[0:5]"
       }
     ]
   },
   "paths": {
-    "input_path": "/mnt/crea_camtrap/LIDAR/TEST",
-    "output_dir": "/mnt/sentinel4To/LIDAR_test_CSF_02",
+    "input_path": "/mnt/crea_camtrap/LIDAR/RAW/MontBlanc/peclerey",
+    "output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB",
     "lidar_list_tiles": "/mnt/crea_camtrap/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
     "area_of_interest": "/mnt/crea_camtrap/LIDAR/SHP/Emprise_totale_3massifs_EPSG2154_V2.shp"
   }

@@ -397,7 +397,6 @@ class LidarProcessor:
         self.log.info(f"Processing {len(self.group_path)} groups of tiles")
         self.log.info(f"Keeping variables: {self.keep_variables}")
         self._check_existing_files()
-
         if not self.group_path:
             self.log.info("All groups already processed, skipping processing step")
             return

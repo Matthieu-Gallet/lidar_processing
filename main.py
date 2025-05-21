@@ -3,8 +3,10 @@ import os, json
 
 from pyforestscan.calculate import calculate_chm, calculate_fhd, assign_voxels
 from pyforestscan.handlers import create_geotiff
+from src.vegetation_indicators import compute_chm,save_tif
 import numpy as np
 import glob
+
 
 if __name__ == "__main__":
 
@@ -31,11 +33,13 @@ if __name__ == "__main__":
     if lidar_processor.files_proc is None:
         raise ValueError("No files to process. Check the input path and file format.")
     else:
+
         path2 = lidar_processor.files_proc[0]
         print(path2)
         data = np.load(glob.glob(path2, recursive=True)[0])
-        voxel_resolution = (20, 20, 0.1)
-        voxels, extent = assign_voxels(data, voxel_resolution)
-        chm = calculate_chm(data, voxel_resolution, interpolation=None)
-        name = path2.split(".")[0]
-        create_geotiff(chm[0], name + "_chm.tif", "EPSG:2154", extent)
+        chm, transf = compute_chm(data, resolution=10, quantile=95)
+        save_tif(chm,transf, path2.split(".")[0] + "_chm.tif")
+
+
+        manual_csv = "/home/mgallet/Documents/Lidar/lidar_processing/data/indicators_from_observed_variables.csv"
+        plot_linear_reg(manual_csv, output_chm)
