@@ -80,7 +80,7 @@ class LidarProcessor:
         self.tiles = glob.glob(os.path.join(self.path, "**/*.laz"), recursive=True)
         self.output_dir = output_dir
         self.keep_variables = keep_variables
-        self.crop = crop
+        self.crop = bool(crop)
         self.pipeline = pipeline
         self.n_jobs_uncompress = min(n_jobs_uncompress, os.cpu_count() or 1)
         self.n_jobs = min(n_jobs, os.cpu_count() or 1)
@@ -110,6 +110,7 @@ class LidarProcessor:
         self.log.info(f"Group size: {self.group}")
         self.log.info(f"Using {self.n_jobs} workers")
         self.log.info(f"Memory limit: {self.memory_limit} MB")
+        self.log.info(f"Crop: {self.crop}")
         self.log.info("=" * 50)
 
     def __getstate__(self):
@@ -197,7 +198,7 @@ class LidarProcessor:
                 lidar_list_tiles,
                 area_of_interest,
                 self.log,
-                self.crop
+                crop_D=True,
             )
             for input_file in tiles_to_process
         )

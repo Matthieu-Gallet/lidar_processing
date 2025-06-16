@@ -43,7 +43,7 @@ def load_polygon_from_file(vector_file_path, index=0):
 
 
 def select_and_save_tiles(
-    tuiles_path, parcelle_path, name_file, name_out="temp.shp", crop=False
+    tuiles_path, parcelle_path, name_file, name_out="temp.shp", crop=1
 ):
     """
     Select and extract the footprint of a shapefile inside a LiDAR tile,
@@ -96,7 +96,7 @@ def select_and_save_tiles(
 
 
 def uncompress_crop_tiles(
-    root_dir, output_dir, input_file, lidar_list_tiles, area_of_interest, log, crop=False
+    root_dir, output_dir, input_file, lidar_list_tiles, area_of_interest, log, crop_D=True
 ):
     """
     Uncompress LiDAR tiles and crop them to the area of interest.
@@ -146,7 +146,8 @@ def uncompress_crop_tiles(
                 tuiles_path=lidar_list_tiles,
                 parcelle_path=area_of_interest,
                 name_file=input_file,
-                crop=crop,
+                name_out=name_out.replace(".las", ".shp"),
+                crop=crop_D,
             )
             if check_tile == 1:
                 uncompress_lidar(input_file, name_out)
@@ -199,7 +200,7 @@ def uncompress_lidar(input_file, output_file, crop=None):
     pipe["pipeline"].append(
         {
             "type": "filters.range",
-            "limits": "Z[1200:2800]",
+            "limits": "Z[1400:2800]",
         }
     )
     pipe["pipeline"].append(

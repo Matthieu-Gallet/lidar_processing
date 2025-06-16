@@ -21,7 +21,7 @@ def plot_linear_reg(manual_csv, output_chm):
     except FileNotFoundError:
         raise FileNotFoundError(f"File {manual_csv} not found.")
     try:
-        windows = extract_windows(output_chm, pd_survey['X'], pd_survey['Y'], (7,7))
+        windows = extract_windows(output_chm, pd_survey['X'], pd_survey['Y'], (4,4))
         diagonals = extract_diagonals(windows)
         allvalue = np.array(windows).reshape(len(windows), -1)
         stats = compute_stats(diagonals, axis=1)
@@ -88,12 +88,13 @@ def run_experiment(config, experiment_params, experiment_name):
         n_jobs=exp_config["processor_settings"]["n_jobs"],
         n_jobs_uncompress=2 * exp_config["processor_settings"]["n_jobs"],
         pipeline=exp_config["pdal_pipeline"],
+        crop=exp_config["processor_settings"]["crop"],
     )
     
     lidar_processor.run_pipeline(
         lidar_list_tiles=exp_config["paths"]["lidar_list_tiles"],
         area_of_interest=exp_config["paths"]["area_of_interest"],
-        skip_uncompress=False,
+        skip_uncompress=True,
     )
 
     if lidar_processor.files_proc is None:
@@ -104,7 +105,7 @@ def run_experiment(config, experiment_params, experiment_name):
             print(f"Processing file: {path}")
             try:
                 data = np.load(glob.glob(path, recursive=True)[0])
-                chm, transf = compute_chm(data, resolution=2.85, quantile=100)
+                chm, transf = compute_chm(data, resolution=2, quantile=98)
                 save_tif(chm, transf, path.split(".")[0] + "_chm.tif")
                 print(f"Successfully created CHM for {path}")
             except Exception as e:
@@ -135,78 +136,13 @@ if __name__ == "__main__":
 
     # Combinaisons codées en dur de paramètres à tester
     param_combinations = [
-
-                {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.25,
-            "scalar": 2.0,
-            "cell": 4.0
-        },
         {
-            "slope": 0.3,
-            "window": 50,
-            "threshold": 0.25,
-            "scalar": 2.0,
-            "cell": 2.85
+        "slope": 0.75,
+        "window": 25,
+        "threshold": 0.25,
+        "scalar": 2.0,
+        "cell": 2.85,
         },
-        {
-            "slope": 0.6,
-            "window": 15,
-            "threshold": 0.25,
-            "scalar": 2.0,
-            "cell": 2.85
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.25,
-            "scalar": 2.0,
-            "cell": 2.5
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.35,
-            "scalar": 2.0,
-            "cell": 2.5
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.45,
-            "scalar": 2.0,
-            "cell": 2.5
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.55,
-            "scalar": 2.0,
-            "cell": 2.5
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.35,
-            "scalar": 2.5,
-            "cell": 2.5
-        },
-        {
-            "slope": 0.3,
-            "window": 15,
-            "threshold": 0.45,
-            "scalar": 2.5,
-            "cell": 2.85
-        },
-        {
-            "slope": 0.45,
-            "window": 15,
-            "threshold": 0.35,
-            "scalar": 1.5,
-            "cell": 2.85
-        }
-           
     ]
     
     # Create timestamp for group of experiments
@@ -233,7 +169,7 @@ if __name__ == "__main__":
         experiment_name = experiment_name.replace(".", "p")  # Replace dots with 'p' for file naming
         
         print(f"\nExperiment {i+1}/{len(param_combinations)}")
-        
+        experiment_name = "exp_20250528_202329_s0p75_w25_t0p25_sc2p0_c2p85"
         # Run the experiment
         output_dir = run_experiment(config, params, experiment_name)
         
