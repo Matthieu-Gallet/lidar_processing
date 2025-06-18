@@ -387,7 +387,7 @@ class LidarProcessor:
             original = False
 
         self.group_path = select_group_tiles(
-            self.tiles,
+            self.tiles_uncomp if not original else self.tiles,
             self.output_dir_uncompress,
             tilesingroup=self.group,
             original=original,
@@ -412,7 +412,9 @@ class LidarProcessor:
         self.remaining_groups = self.group_path.copy()
         self.process_time = time.time()
 
-        self.files_proc = [self.process_worker(input_files) for input_files in tqdm(self.group_path)]
+        self.files_proc = [
+            self.process_worker(input_files) for input_files in tqdm(self.group_path)
+        ]
         self.files_proc_valid = [r[0] for r in self.files_proc if r[0] is not None]
         self.log.info(
             f"Processed {len(self.files_proc_valid)} groups valid out of {len(self.group_path)}"

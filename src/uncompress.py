@@ -25,7 +25,7 @@ def load_polygon_from_file(vector_file_path, index=0):
     FileNotFoundError
         If the vector file does not exist.
     ValueError
-        If the file cannot be read or is not a valid vector file format.    
+        If the file cannot be read or is not a valid vector file format.
     """
     if not os.path.isfile(vector_file_path):
         raise FileNotFoundError(f"No such file: '{vector_file_path}'")
@@ -96,7 +96,13 @@ def select_and_save_tiles(
 
 
 def uncompress_crop_tiles(
-    root_dir, output_dir, input_file, lidar_list_tiles, area_of_interest, log, crop_D=True
+    root_dir,
+    output_dir,
+    input_file,
+    lidar_list_tiles,
+    area_of_interest,
+    log,
+    crop_D=True,
 ):
     """
     Uncompress LiDAR tiles and crop them to the area of interest.
@@ -152,9 +158,7 @@ def uncompress_crop_tiles(
             if check_tile == 1:
                 uncompress_lidar(input_file, name_out)
             elif check_tile != 0:
-                uncompress_lidar(
-                    input_file, name_out, crop = check_tile
-                )
+                uncompress_lidar(input_file, name_out, crop=check_tile)
 
             return name_out
 
@@ -182,13 +186,15 @@ def uncompress_lidar(input_file, output_file, crop=None):
     int
         Returns 1 if the operation is successful.
     """
-    pipe =  {
-                "pipeline": [
-                    {
-                        "type": "readers.las",
-                        "filename": input_file,
-                        "spatialreference": "EPSG:2154",
-                    }]}
+    pipe = {
+        "pipeline": [
+            {
+                "type": "readers.las",
+                "filename": input_file,
+                "spatialreference": "EPSG:2154",
+            }
+        ]
+    }
     if crop is not None:
         polygon_wkt, _ = load_polygon_from_file(crop)
         pipe["pipeline"].append(
@@ -200,7 +206,7 @@ def uncompress_lidar(input_file, output_file, crop=None):
     pipe["pipeline"].append(
         {
             "type": "filters.range",
-            "limits": "Z[1400:2800]",
+            "limits": "Z[1300:2900]",
         }
     )
     pipe["pipeline"].append(

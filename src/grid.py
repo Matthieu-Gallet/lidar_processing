@@ -26,10 +26,14 @@ def construct_matrix_coordinates(list_tiles, original=True):
     coords = []
     for tile in list_tiles:
         if original:
-            coord = tile.split("_")[2:4]
+            coord = os.path.basename(tile).split("_")[2:4]
         else:
-            coord = tile.split("_")[3:5]  # Using indices 3:5 from your updated function
-        coords.append(np.array(coord, dtype=int))
+            coord = os.path.basename(tile).split("_")[3:5]
+        try:
+            coords.append(np.array(coord, dtype=int))
+        except ValueError as e:
+            warnings.warn(f"Invalid tile format '{tile}': {e}. Skipping this tile.")
+            break
     coords = np.array(coords)
     return coords
 

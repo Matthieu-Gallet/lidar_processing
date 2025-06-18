@@ -1,6 +1,6 @@
 {
   "processor_settings": {
-    "group": 22,
+    "group": 20,
     "sampling_strategy": "adjacent",
     "keep_variables": [
       "X",
@@ -10,7 +10,7 @@
       "Classification",
       "HeightAboveGround"
     ],
-    "n_jobs": 11,
+    "n_jobs": 10,
     "crop": 1
   },
   "pdal_pipeline": {
@@ -29,17 +29,8 @@
         ]
       },
       {
-        "type": "filters.smrf",
-        "slope": 0.75,
-        "window": 25,
-        "threshold": 0.3,
-        "scalar": 2.0,
-        "cell": 2.85,
-        "ignore": "Classification[7:7]"
-      },
-      {
         "type": "filters.elm",
-        "cell": 3
+        "cell": 2.85
       }
     ],
     "phase_2": [
@@ -58,9 +49,9 @@
     ]
   },
   "paths": {
-    "input_path": "/mnt/crea_camtrap/LIDAR/RAW/",
-    "output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB",
-    "lidar_list_tiles": "/mnt/crea_camtrap/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
-    "area_of_interest": "/mnt/crea_camtrap/LIDAR/SHP/Emprise_totale_3massifs_EPSG2154_V2.shp"
+    "input_path": "/mnt/sentinel4To/LIDAR/RAW/MontBlanc",
+    "output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB_detailed",
+    "lidar_list_tiles": "/mnt/sentinel4To/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
+    "area_of_interest": "/mnt/sentinel4To/LIDAR/SHP/3massifs_Herbiland_1300_2900m_2154_concat.shp"
   }
 }
