@@ -5,6 +5,7 @@ from src.vegetation_indicators import compute_chm, save_tif
 import numpy as np
 import glob
 from src.geo_tools import merge_geotiffs
+from src.visualization import plot_linear_reg
 
 
 if __name__ == "__main__":
@@ -51,3 +52,9 @@ if __name__ == "__main__":
             merge_geotiffs(exp_config["paths"]["output_dir"], output_chm)
         except Exception as e:
             print(f"Error merging GeoTIFFs: {e}")
+
+        try:
+            manual_csv = exp_config["paths"]["manual_csv"]
+            plot_linear_reg(manual_csv, output_chm)
+        except Exception as e:
+            print(f"Error plotting linear regression: {e}")

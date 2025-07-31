@@ -4,12 +4,17 @@ Visualization utilities for Lidar data processing.
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+from copy import deepcopy
+import os
+from .geo_tools import extract_windows, extract_diagonals, compute_stats
+from .linear_reg import plot_scenario, _SCENARIO, _AX_TITLES, _AX_LABELS, _SUP_TITLES
 
 
 def plot_grouped_tiles(grid, groups, indices, output_file=None):
     """
     Create a visualization of the grouped tiles.
-    
+
     Parameters:
     ----------
     grid : numpy.ndarray
@@ -33,13 +38,13 @@ def plot_grouped_tiles(grid, groups, indices, output_file=None):
 
     # Create figure
     fig, ax = plt.subplots(figsize=(25, 25))
-    
+
     # Set up colormap with shuffled colors for better differentiation
     cmap = plt.get_cmap("gnuplot", len(groups))
     cmap = cmap(np.arange(cmap.N))
     np.random.shuffle(cmap)
     cmap = plt.cm.colors.ListedColormap(cmap)
-    
+
     # Plot tiles with colors based on their group
     ax.pcolormesh(
         np.where(grid == 1, group_map, np.nan) - 1,
@@ -50,12 +55,10 @@ def plot_grouped_tiles(grid, groups, indices, output_file=None):
         edgecolors="white",
         linewidth=0.01,
     )
-    
+
     # Plot missing tiles in gray
-    ax.matshow(
-        np.where(grid == 1, np.nan, 0), cmap="gray_r", alpha=1
-    )
-    
+    ax.matshow(np.where(grid == 1, np.nan, 0), cmap="gray_r", alpha=1)
+
     # Add group numbers to each tile
     for group_id, group in enumerate(groups, start=1):
         for x, y in group:
@@ -70,7 +73,7 @@ def plot_grouped_tiles(grid, groups, indices, output_file=None):
                 fontsize=8,
                 color="black",
             )
-    
+
     # Set up axis labels and appearance
     ax.set_title("Grouped Tiles", fontsize=16)
     ax.set_xticks(np.array(list((x_indices.values()))) + 0.5)
@@ -86,9 +89,52 @@ def plot_grouped_tiles(grid, groups, indices, output_file=None):
     ax.set_ylim(list(y_indices.values())[-1] + 2, list(y_indices.values())[0] - 2)
     ax.invert_yaxis()  # Invert the Y-axis to make it decreasing
     ax.tick_params(which="minor", bottom=False, left=False)
-    
+
     # Save or display
     if output_file:
         plt.savefig(output_file, dpi=300, bbox_inches="tight")
     else:
         plt.show()
+
+
+def plot_linear_reg(manual_csv, output_chm):
+    """
+    Generate linear regression plots from manual survey data and CHM data.
+
+    Parameters:
+    ----------
+    manual_csv : str
+        Path to the CSV file containing manual survey data with X, Y coordinates.
+    output_chm : str
+        Path to the output CHM (Canopy Height Model) GeoTIFF file.
+    """
+    try:
+        pd_survey = deepcopy(pd.read_csv(manual_csv))
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File {manual_csv} not found.")
+    try:
+        windows = extract_windows(output_chm, pd_survey["X"], pd_survey["Y"], (4, 4))
+        diagonals = extract_diagonals(windows)
+        allvalue = np.array(windows).reshape(len(windows), -1)
+        stats = compute_stats(diagonals, axis=1)
+        for keys, values in stats.items():
+            pd_survey[keys] = values
+        stats_all = compute_stats(allvalue, axis=1)
+        for keys, values in stats_all.items():
+            pd_survey[keys + "_all"] = values
+    except Exception as e:
+        print(f"Error extracting windows: {e}")
+    try:
+        for K, _SC in enumerate(_SCENARIO):
+            sup_title = _SUP_TITLES[K] + f" - 5m"
+            plot_scenario(
+                pd_survey,
+                _SC,
+                _AX_TITLES,
+                _AX_LABELS[K],
+                sup_title,
+                save=os.path.join(os.path.dirname(output_chm), "FIGURES"),
+            )
+    except Exception as e:
+        print(f"Error plotting scenario: {e}")
+    del pd_survey

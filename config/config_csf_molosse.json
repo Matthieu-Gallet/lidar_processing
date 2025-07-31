@@ -52,6 +52,7 @@
     "input_path": "/mnt/sentinel4To/LIDAR/RAW/MontBlanc",
     "output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB_detailed",
     "lidar_list_tiles": "/mnt/sentinel4To/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
-    "area_of_interest": "/mnt/sentinel4To/LIDAR/SHP/3massifs_Herbiland_1300_2900m_2154_concat.shp"
+    "area_of_interest": "/mnt/sentinel4To/LIDAR/SHP/3massifs_Herbiland_1300_2900m_2154_concat.shp",
+    "manual_csv": "/home/mgallet/Documents/Lidar/lidar_processing/data/indicators_from_observed_variables_with_stats.csv"
   }
 }
