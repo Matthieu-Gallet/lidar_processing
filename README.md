@@ -1,3 +1,4 @@
+```bash
 lidar_processing/
 ├── config/
 │   └── default_config.json
@@ -11,4 +12,4 @@ lidar_processing/
 │       └── __init__.py
 ├── cli.py              # Interface CLI avec Click
 └── README.md
-
+```
