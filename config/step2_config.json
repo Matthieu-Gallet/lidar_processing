@@ -1,0 +1,40 @@
+{
+    "step_name": "Step 2 - CHM Estimation",
+    "description": "Compute CHM with different quantiles and FHD from processed LIDAR data",
+    "chm_settings": {
+        "resolution": 20,
+        "quantile_95": 95,
+        "quantile_50": 50
+    },
+    "fhd_settings": {
+        "resolution": 20,
+        "zmin": 0,
+        "zmax": 2,
+        "zwidth": 0.15
+    },
+    "paths": {
+        "base_output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB",
+        "experiment_name": "exp_20250528_202329_s0p75_w25_t0p25_sc2p0_c2p85",
+        "processed_subdir": "processed",
+        "results_subdir": "results"
+    },
+    "output_files": {
+        "chm_95_suffix": "_chm_q95.tif",
+        "chm_50_suffix": "_chm_q50.tif",
+        "fhd_suffix": "_fhd.tif",
+        "multichannel_suffix": "_multichannel.tif",
+        "merged_chm_95": "merged_chm_q95.tif",
+        "merged_chm_50": "merged_chm_q50.tif",
+        "merged_fhd": "merged_fhd.tif",
+        "merged_multichannel": "merged_multichannel.tif"
+    },
+    "geotiff_settings": {
+        "crs": "EPSG:2154",
+        "compress": "lzw",
+        "descriptions": {
+            "chm_95": "Canopy Height Model with 95th percentile, 20m resolution",
+            "chm_50": "Canopy Height Model with 50th percentile, 20m resolution",
+            "fhd": "Foliage Height Diversity, zmin=0, zmax=2, zwidth=0.15"
+        }
+    }
+}

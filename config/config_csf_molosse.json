@@ -11,7 +11,8 @@
       "HeightAboveGround"
     ],
     "n_jobs": 10,
-    "crop": 1
+    "crop": 1,
+    "skip_uncompress": false
   },
   "pdal_pipeline": {
     "phase_1": [

@@ -1,0 +1,70 @@
+{
+    "meta_config": {
+        "project_name": "LIDAR Processing Pipeline",
+        "version": "1.0.0",
+        "description": "Complete pipeline for LIDAR data processing, CHM estimation, and vegetation classification",
+        "author": "Herbiland Project",
+        "creation_date": "2025-01-31"
+    },
+    "pipeline_settings": {
+        "run_all_steps": true,
+        "steps_to_run": [
+            1,
+            2,
+            3
+        ],
+        "continue_on_error": false,
+        "verbose": true,
+        "save_intermediate_results": true
+    },
+    "step_configurations": {
+        "step1": {
+            "config_file": "config/step1_config.json",
+            "script_file": "step1_process_lidar.py",
+            "enabled": true,
+            "depends_on": [],
+            "estimated_time_minutes": 120,
+            "memory_requirement_gb": 16,
+            "description": "Process raw LIDAR data and generate initial CHM"
+        },
+        "step2": {
+            "config_file": "config/step2_config.json",
+            "script_file": "step2_estimate_chm.py",
+            "enabled": true,
+            "depends_on": [
+                "step1"
+            ],
+            "estimated_time_minutes": 45,
+            "memory_requirement_gb": 8,
+            "description": "Compute CHM with multiple quantiles and FHD"
+        },
+        "step3": {
+            "config_file": "config/step3_config.json",
+            "script_file": "step3_chm_clustering.py",
+            "enabled": true,
+            "depends_on": [
+                "step2"
+            ],
+            "estimated_time_minutes": 30,
+            "memory_requirement_gb": 4,
+            "description": "Apply clustering for vegetation classification"
+        }
+    },
+    "logging": {
+        "level": "INFO",
+        "log_file": "logs/pipeline_execution.log",
+        "console_output": true,
+        "timestamp_format": "%Y-%m-%d %H:%M:%S"
+    },
+    "monitoring": {
+        "track_progress": true,
+        "send_notifications": false,
+        "email_on_completion": false,
+        "email_on_error": false
+    },
+    "paths": {
+        "log_directory": "logs",
+        "temp_directory": "/tmp/lidar_processing",
+        "backup_directory": "backups"
+    }
+}

@@ -1,0 +1,65 @@
+{
+    "step_name": "Step 1 - LIDAR Processing",
+    "description": "Process raw LIDAR data, apply filters, and generate initial CHM",
+    "processor_settings": {
+        "group": 20,
+        "sampling_strategy": "adjacent",
+        "keep_variables": [
+            "X",
+            "Y",
+            "Z",
+            "Intensity",
+            "Classification",
+            "HeightAboveGround"
+        ],
+        "n_jobs": 10,
+        "crop": 1,
+        "skip_uncompress": false
+    },
+    "pdal_pipeline": {
+        "phase_1": [
+            {
+                "type": "filters.outlier",
+                "method": "statistical",
+                "mean_k": 20,
+                "multiplier": 3.0
+            },
+            {
+                "type": "filters.assign",
+                "value": [
+                    "NumberOfReturns = 1",
+                    "ReturnNumber = 1"
+                ]
+            },
+            {
+                "type": "filters.elm",
+                "cell": 2.85
+            }
+        ],
+        "phase_2": [
+            {
+                "type": "filters.hag_delaunay",
+                "count": 80,
+                "allow_extrapolation": true
+            },
+            {
+                "type": "filters.range",
+                "limits": "HeightAboveGround[0:35]"
+            },
+            {
+                "type": "filters.merge"
+            }
+        ]
+    },
+    "chm_settings": {
+        "resolution": 5,
+        "quantile": 95
+    },
+    "paths": {
+        "input_path": "/mnt/sentinel4To/LIDAR/RAW/MontBlanc",
+        "output_dir": "/mnt/sentinel4To/LIDAR_RUNEXP_MB_detailed",
+        "lidar_list_tiles": "/mnt/sentinel4To/LIDAR/SHP/TA_programme_lidar_HD_path.shp",
+        "area_of_interest": "/mnt/sentinel4To/LIDAR/SHP/3massifs_Herbiland_1300_2900m_2154_concat.shp",
+        "manual_csv": "/home/mgallet/Documents/Lidar/lidar_processing/data/indicators_from_observed_variables_with_stats.csv"
+    }
+}

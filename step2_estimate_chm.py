@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import glob
+import json
 from pathlib import Path
 import rasterio
 from rasterio.transform import from_bounds
@@ -56,21 +57,22 @@ def save_multichannel_tif(chm_95, chm_50, fhd, transform, output_path, crs="EPSG
         )
 
 
-def process_experiment_data(experiment_dir):
+def process_experiment_data(experiment_dir, config):
     """
     Process existing experiment data to compute CHM and FHD with new parameters
 
     Args:
         experiment_dir: Path to the experiment directory
+        config: Configuration dictionary
     """
     print(f"Processing experiment data in: {experiment_dir}")
 
     # Create results directory
-    results_dir = os.path.join(experiment_dir, "results")
+    results_dir = os.path.join(experiment_dir, config["paths"]["results_subdir"])
     os.makedirs(results_dir, exist_ok=True)
 
     # Find processed numpy files
-    processed_dir = os.path.join(experiment_dir, "processed")
+    processed_dir = os.path.join(experiment_dir, config["paths"]["processed_subdir"])
     if not os.path.exists(processed_dir):
         print(f"Processed directory not found: {processed_dir}")
         return
@@ -98,18 +100,30 @@ def process_experiment_data(experiment_dir):
             data = np.load(npy_file)
             print(f"Loaded {len(data)} points from {os.path.basename(npy_file)}")
 
-            # Compute CHM with quantile 95 (resolution 20m)
+            # Compute CHM with quantile 95 (resolution from config)
             print("Computing CHM with quantile 95...")
-            chm_95, transform_95 = compute_chm(data, resolution=20, quantile=95)
+            chm_95, transform_95 = compute_chm(
+                data,
+                resolution=config["chm_settings"]["resolution"],
+                quantile=config["chm_settings"]["quantile_95"],
+            )
 
-            # Compute CHM with quantile 50 (resolution 20m)
+            # Compute CHM with quantile 50 (resolution from config)
             print("Computing CHM with quantile 50...")
-            chm_50, transform_50 = compute_chm(data, resolution=20, quantile=50)
+            chm_50, transform_50 = compute_chm(
+                data,
+                resolution=config["chm_settings"]["resolution"],
+                quantile=config["chm_settings"]["quantile_50"],
+            )
 
-            # Compute FHD (resolution 20m, zmin=0, zmax=2, zwidth=0.15)
+            # Compute FHD (parameters from config)
             print("Computing FHD...")
             fhd, transform_fhd = compute_fhd(
-                data, resolution=20, zmin=0, zmax=2, zwidth=0.15
+                data,
+                resolution=config["fhd_settings"]["resolution"],
+                zmin=config["fhd_settings"]["zmin"],
+                zmax=config["fhd_settings"]["zmax"],
+                zwidth=config["fhd_settings"]["zwidth"],
             )
 
             # Verify that all transforms are the same
@@ -123,9 +137,15 @@ def process_experiment_data(experiment_dir):
             base_name = os.path.splitext(os.path.basename(npy_file))[0]
 
             # Save individual files for potential merging
-            chm_95_file = os.path.join(results_dir, f"{base_name}_chm_q95.tif")
-            chm_50_file = os.path.join(results_dir, f"{base_name}_chm_q50.tif")
-            fhd_file = os.path.join(results_dir, f"{base_name}_fhd.tif")
+            chm_95_file = os.path.join(
+                results_dir, f"{base_name}{config['output_files']['chm_95_suffix']}"
+            )
+            chm_50_file = os.path.join(
+                results_dir, f"{base_name}{config['output_files']['chm_50_suffix']}"
+            )
+            fhd_file = os.path.join(
+                results_dir, f"{base_name}{config['output_files']['fhd_suffix']}"
+            )
 
             save_tif(chm_95, transform_95, chm_95_file)
             save_tif(chm_50, transform_50, chm_50_file)
@@ -137,9 +157,17 @@ def process_experiment_data(experiment_dir):
 
             # Save multichannel file for this tile
             multichannel_file = os.path.join(
-                results_dir, f"{base_name}_multichannel.tif"
+                results_dir,
+                f"{base_name}{config['output_files']['multichannel_suffix']}",
             )
-            save_multichannel_tif(chm_95, chm_50, fhd, transform_95, multichannel_file)
+            save_multichannel_tif(
+                chm_95,
+                chm_50,
+                fhd,
+                transform_95,
+                multichannel_file,
+                config["geotiff_settings"]["crs"],
+            )
 
             print(f"Successfully processed {base_name}")
 
@@ -151,21 +179,25 @@ def process_experiment_data(experiment_dir):
     if chm_95_files and chm_50_files and fhd_files:
         try:
             print("Merging CHM quantile 95 files...")
-            merged_chm_95 = os.path.join(results_dir, "merged_chm_q95.tif")
+            merged_chm_95 = os.path.join(
+                results_dir, config["output_files"]["merged_chm_95"]
+            )
             merge_geotiffs_from_list(chm_95_files, merged_chm_95)
 
             print("Merging CHM quantile 50 files...")
-            merged_chm_50 = os.path.join(results_dir, "merged_chm_q50.tif")
+            merged_chm_50 = os.path.join(
+                results_dir, config["output_files"]["merged_chm_50"]
+            )
             merge_geotiffs_from_list(chm_50_files, merged_chm_50)
 
             print("Merging FHD files...")
-            merged_fhd = os.path.join(results_dir, "merged_fhd.tif")
+            merged_fhd = os.path.join(results_dir, config["output_files"]["merged_fhd"])
             merge_geotiffs_from_list(fhd_files, merged_fhd)
 
             # Create final multichannel merged file
             print("Creating final multichannel merged file...")
             create_merged_multichannel(
-                merged_chm_95, merged_chm_50, merged_fhd, results_dir
+                merged_chm_95, merged_chm_50, merged_fhd, results_dir, config
             )
 
         except Exception as e:
@@ -194,11 +226,13 @@ def merge_geotiffs_from_list(file_list, output_path):
         )
 
 
-def create_merged_multichannel(chm_95_file, chm_50_file, fhd_file, output_dir):
+def create_merged_multichannel(chm_95_file, chm_50_file, fhd_file, output_dir, config):
     """
     Create a merged multichannel file from the three merged single-channel files
     """
-    output_path = os.path.join(output_dir, "merged_multichannel.tif")
+    output_path = os.path.join(
+        output_dir, config["output_files"]["merged_multichannel"]
+    )
 
     # Read the three merged files
     with rasterio.open(chm_95_file) as src_95:
@@ -218,9 +252,13 @@ def create_merged_multichannel(chm_95_file, chm_50_file, fhd_file, output_dir):
 
 
 if __name__ == "__main__":
-    # Configuration
-    base_output_dir = "/mnt/sentinel4To/LIDAR_RUNEXP_MB"
-    experiment_name = "exp_20250528_202329_s0p75_w25_t0p25_sc2p0_c2p85"
+    # Load configuration
+    with open("config/step2_config.json", "r") as f:
+        config = json.load(f)
+
+    # Extract configuration values
+    base_output_dir = config["paths"]["base_output_dir"]
+    experiment_name = config["paths"]["experiment_name"]
     experiment_dir = os.path.join(base_output_dir, experiment_name)
 
     # Check if experiment directory exists
@@ -229,4 +267,4 @@ if __name__ == "__main__":
         exit(1)
 
     # Process the experiment data
-    process_experiment_data(experiment_dir)
+    process_experiment_data(experiment_dir, config)
