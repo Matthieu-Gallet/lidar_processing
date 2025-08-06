@@ -1,0 +1,65 @@
+{
+    "step_name": "Step 1 - LIDAR Processing (Test)",
+    "description": "Test configuration for LIDAR processing with minimal data",
+    "processor_settings": {
+        "group": 4,
+        "sampling_strategy": "adjacent",
+        "keep_variables": [
+            "X",
+            "Y",
+            "Z",
+            "Intensity",
+            "Classification",
+            "HeightAboveGround"
+        ],
+        "n_jobs": 2,
+        "crop": 1,
+        "skip_uncompress": false
+    },
+    "pdal_pipeline": {
+        "phase_1": [
+            {
+                "type": "filters.outlier",
+                "method": "statistical",
+                "mean_k": 10,
+                "multiplier": 2.0
+            },
+            {
+                "type": "filters.assign",
+                "value": [
+                    "NumberOfReturns = 1",
+                    "ReturnNumber = 1"
+                ]
+            },
+            {
+                "type": "filters.elm",
+                "cell": 2.0
+            }
+        ],
+        "phase_2": [
+            {
+                "type": "filters.hag_delaunay",
+                "count": 40,
+                "allow_extrapolation": true
+            },
+            {
+                "type": "filters.range",
+                "limits": "HeightAboveGround[0:25]"
+            },
+            {
+                "type": "filters.merge"
+            }
+        ]
+    },
+    "chm_settings": {
+        "resolution": 10,
+        "quantile": 95
+    },
+    "paths": {
+        "input_path": "data",
+        "output_dir": "test/outputs/step1",
+        "lidar_list_tiles": null,
+        "area_of_interest": null,
+        "manual_csv": "test/fixtures/test_survey_data.csv"
+    }
+}

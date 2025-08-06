@@ -1,0 +1,11 @@
+X,Y,hauteur_observee,densite_vegetation,type_vegetation
+1009500,6551500,2.5,dense,lande_arbustive
+1009600,6551600,1.2,moyenne,lande_rase
+1009700,6551700,3.1,dense,arbuste
+1009800,6551800,0.8,faible,herbe
+1009900,6551900,4.2,tres_dense,foret
+1009400,6551400,1.8,moyenne,lande_moyenne
+1009300,6551300,0.5,faible,sol_nu
+1009200,6551200,2.8,dense,lande_dense
+1009100,6551100,3.5,tres_dense,arbuste_haut
+1009000,6551000,1.0,faible,lande_clairsemee

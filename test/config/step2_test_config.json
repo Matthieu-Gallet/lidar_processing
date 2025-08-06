@@ -1,0 +1,40 @@
+{
+    "step_name": "Step 2 - CHM Estimation (Test)",
+    "description": "Test configuration for CHM and FHD computation",
+    "chm_settings": {
+        "resolution": 10,
+        "quantile_95": 95,
+        "quantile_50": 50
+    },
+    "fhd_settings": {
+        "resolution": 10,
+        "zmin": 0,
+        "zmax": 2,
+        "zwidth": 0.2
+    },
+    "paths": {
+        "base_output_dir": "test/outputs",
+        "experiment_name": "step1",
+        "processed_subdir": "processed",
+        "results_subdir": "results"
+    },
+    "output_files": {
+        "chm_95_suffix": "_chm_q95_test.tif",
+        "chm_50_suffix": "_chm_q50_test.tif",
+        "fhd_suffix": "_fhd_test.tif",
+        "multichannel_suffix": "_multichannel_test.tif",
+        "merged_chm_95": "merged_chm_q95_test.tif",
+        "merged_chm_50": "merged_chm_q50_test.tif",
+        "merged_fhd": "merged_fhd_test.tif",
+        "merged_multichannel": "merged_multichannel_test.tif"
+    },
+    "geotiff_settings": {
+        "crs": "EPSG:2154",
+        "compress": "lzw",
+        "descriptions": {
+            "chm_95": "Test CHM with 95th percentile, 10m resolution",
+            "chm_50": "Test CHM with 50th percentile, 10m resolution",
+            "fhd": "Test FHD, zmin=0, zmax=2, zwidth=0.2"
+        }
+    }
+}

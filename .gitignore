@@ -2,3 +2,4 @@
 *.aux.xml
 *.tar.gz
 .old/
+data/

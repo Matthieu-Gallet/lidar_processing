@@ -1,0 +1,70 @@
+{
+    "meta_config": {
+        "project_name": "LIDAR Processing Pipeline - Test Suite",
+        "version": "1.0.0-test",
+        "description": "Test configuration for LIDAR processing pipeline with sample data",
+        "author": "Herbiland Project - Test Suite",
+        "creation_date": "2025-08-06"
+    },
+    "pipeline_settings": {
+        "run_all_steps": true,
+        "steps_to_run": [
+            1,
+            2,
+            3
+        ],
+        "continue_on_error": true,
+        "verbose": true,
+        "save_intermediate_results": true
+    },
+    "step_configurations": {
+        "step1": {
+            "config_file": "test/config/step1_test_config.json",
+            "script_file": "test/step1/test_step1_process_lidar.py",
+            "enabled": true,
+            "depends_on": [],
+            "estimated_time_minutes": 5,
+            "memory_requirement_gb": 2,
+            "description": "Test LIDAR data processing with sample files"
+        },
+        "step2": {
+            "config_file": "test/config/step2_test_config.json",
+            "script_file": "test/step2/test_step2_estimate_chm.py",
+            "enabled": true,
+            "depends_on": [
+                "step1"
+            ],
+            "estimated_time_minutes": 3,
+            "memory_requirement_gb": 1,
+            "description": "Test CHM computation with multiple quantiles"
+        },
+        "step3": {
+            "config_file": "test/config/step3_test_config.json",
+            "script_file": "test/step3/test_step3_chm_clustering.py",
+            "enabled": true,
+            "depends_on": [
+                "step2"
+            ],
+            "estimated_time_minutes": 2,
+            "memory_requirement_gb": 1,
+            "description": "Test vegetation classification with clustering"
+        }
+    },
+    "logging": {
+        "level": "DEBUG",
+        "log_file": "test/outputs/test_pipeline_execution.log",
+        "console_output": true,
+        "timestamp_format": "%Y-%m-%d %H:%M:%S"
+    },
+    "monitoring": {
+        "track_progress": true,
+        "send_notifications": false,
+        "email_on_completion": false,
+        "email_on_error": false
+    },
+    "paths": {
+        "log_directory": "test/outputs/logs",
+        "temp_directory": "test/outputs/temp",
+        "backup_directory": "test/outputs/backups"
+    }
+}

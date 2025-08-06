@@ -1,0 +1,86 @@
+{
+    "step_name": "Step 3 - CHM Clustering (Test)",
+    "description": "Test configuration for vegetation classification with optional masks",
+    "clustering_settings": {
+        "method": "gmm",
+        "n_clusters": 3,
+        "random_state": 42,
+        "max_iter": 1000,
+        "tolerance": 1e-4,
+        "kmeans_settings": {
+            "init": "k-means++"
+        },
+        "gmm_settings": {
+            "init_params": "k-means++",
+            "covariance_type": "full"
+        }
+    },
+    "data_settings": {
+        "channels_to_use": [
+            0,
+            2
+        ],
+        "move_axis_from": 0,
+        "move_axis_to": -1
+    },
+    "paths": {
+        "input_path": "test/outputs/step1/results/*multi*.tif",
+        "roc_mask_path": "test/fixtures/test_roc_mask.tif",
+        "shadow_mask_path": "test/fixtures/test_shadow_mask.tif",
+        "output_subdir": "processed",
+        "use_masks": true,
+        "masks_optional": true
+    },
+    "output_files": {
+        "composite_filename": "test_composite_image.tif",
+        "masked_filename": "test_masked_output.tif",
+        "classified_filename": "test_classified_output_{method}.tif"
+    },
+    "classification_colors": {
+        "0": [
+            139,
+            137,
+            137
+        ],
+        "1": [
+            47,
+            47,
+            47
+        ],
+        "2": [
+            34,
+            139,
+            34
+        ],
+        "3": [
+            255,
+            218,
+            185
+        ],
+        "4": [
+            205,
+            133,
+            63
+        ],
+        "5": [
+            160,
+            82,
+            45
+        ],
+        "128": [
+            0,
+            0,
+            0
+        ]
+    },
+    "classification_descriptions": {
+        "0": "Roche (Test)",
+        "1": "Ombre (Test)",
+        "2": "Arbustes et forêts (Test)",
+        "3": "Lande rase (Test)",
+        "4": "Lande dense (Test)",
+        "5": "Lande moyenne (Test)",
+        "128": "NoData (Test)"
+    },
+    "nodata_value": 128
+}
