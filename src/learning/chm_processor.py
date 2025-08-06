@@ -382,16 +382,20 @@ def generate_random_colors(class_values, seed=42):
     return colors
 
 
-def prepare_classification(final_data):
+def prepare_classification(final_data, use_masks=True):
     """
     Prépare les données pour la classification en remplaçant les valeurs spécifiques
     et en créant un tableau de classification.
 
     Args:
         final_data: tableau numpy 3D des données finales
+        use_masks: booléen indiquant si les masques ont été appliqués
 
     Returns:
         classified_array: tableau 2D de classification
+        class_dict: dictionnaire des classes
+        pixels_restants: pixels à classifier
+        cond_restants: condition pour les pixels restants
     """
     # Assurez-vous que final_data est un tableau numpy
     if not isinstance(final_data, np.ndarray):
@@ -405,44 +409,74 @@ def prepare_classification(final_data):
     classified_array = np.zeros(
         final_data.shape[:2], dtype=np.uint8
     )  # Créer un tableau de classification vide
-    # Classifier les pixels = -999 ou nan
-    classified_array[final_data[:, :, 0] == -999] = 128
-    classified_array[np.isnan(final_data[:, :, 0])] = (
-        128  # Assurez-vous de gérer les NaN
-    )
 
-    # Classifier les pixels = -99
-    classified_array[final_data[:, :, 0] == -99] = 0
-    # Classifier les pixels = -89
-    classified_array[final_data[:, :, 0] == -89] = 1
-    # Classifier les pixels bands 0 supérieurs à 2
-    classified_array[final_data[:, :, 0] > 2] = 2
+    if use_masks:
+        # Classifier les pixels = -999 ou nan
+        classified_array[final_data[:, :, 0] == -999] = 128
+        classified_array[np.isnan(final_data[:, :, 0])] = 128
 
-    # récupérer tous les autres pixels
-    cond_restants = (
-        (final_data[:, :, 0] != -99)
-        & (final_data[:, :, 0] != -89)
-        & (final_data[:, :, 0] <= 2)
-        & (final_data[:, :, 0] != -999)
-        & (~np.isnan(final_data[:, :, 0]))
-    )
+        # Classifier les pixels = -99 (roche)
+        classified_array[final_data[:, :, 0] == -99] = 0
+        # Classifier les pixels = -89 (ombre)
+        classified_array[final_data[:, :, 0] == -89] = 1
+        # Classifier les pixels bands 0 supérieurs à 2
+        classified_array[final_data[:, :, 0] > 2] = 2
+
+        # récupérer tous les autres pixels
+        cond_restants = (
+            (final_data[:, :, 0] != -99)
+            & (final_data[:, :, 0] != -89)
+            & (final_data[:, :, 0] <= 2)
+            & (final_data[:, :, 0] != -999)
+            & (~np.isnan(final_data[:, :, 0]))
+        )
+
+        class_dict = {
+            0: "Roche",
+            1: "Ombre",
+            2: "Arbustes et Forêts",
+            128: "NoData",
+        }
+    else:
+        # Mode sans masques - commencer à partir de la classe 2
+        # Classifier seulement les pixels = -999 ou nan
+        classified_array[final_data[:, :, 0] == -999] = 128
+        classified_array[np.isnan(final_data[:, :, 0])] = 128
+
+        # Classifier les pixels bands 0 supérieurs à 2
+        classified_array[final_data[:, :, 0] > 2] = 2
+
+        # récupérer tous les autres pixels valides (exclure seulement NoData)
+        cond_restants = (
+            (final_data[:, :, 0] != -999)
+            & (~np.isnan(final_data[:, :, 0]))
+            & (final_data[:, :, 0] <= 2)
+        )
+
+        class_dict = {
+            2: "Arbustes et Forêts",
+            128: "NoData",
+        }
+
     pixels_restants = final_data[cond_restants]
 
-    class_dict = {
-        0: "Roche",
-        1: "Ombre",
-        2: "Arbustes et Forêts",
-        128: "NoData",
-    }
     return classified_array, class_dict, pixels_restants, cond_restants
 
 
-def sort_clusters_by_height(pixels_restants, labels, class_dict):
+def sort_clusters_by_height(pixels_restants, labels, class_dict, start_cluster_id=3):
+    """
+    Trie les clusters par hauteur et met à jour le dictionnaire des classes
+
+    Args:
+        pixels_restants: pixels utilisés pour le clustering
+        labels: résultats du clustering
+        class_dict: dictionnaire existant des classes
+        start_cluster_id: ID de départ pour les nouveaux clusters
+
+    Returns:
+        class_dict: dictionnaire mis à jour
+    """
     unique_clusters = np.unique(labels)
-    for i in range(len(unique_clusters)):
-        class_dict[i + 3] = (
-            f"Landes cluster {i + 1} H={np.mean(pixels_restants[labels == i, 0]):.2f}m D={np.mean(pixels_restants[labels == i, -1]):.2f} N={np.sum(labels == i)}"
-        )
 
     # Calculer hauteur moyenne par cluster et trier
     cluster_heights = [
@@ -454,10 +488,12 @@ def sort_clusters_by_height(pixels_restants, labels, class_dict):
     for new_id, (original_id, _) in enumerate(cluster_heights):
         mask = labels == original_id
         mean_height = np.mean(pixels_restants[mask, 0])
-        mean_distance = np.mean(pixels_restants[mask, -1])
+        mean_distance = (
+            np.mean(pixels_restants[mask, -1]) if pixels_restants.shape[1] > 1 else 0
+        )
         n_points = np.sum(mask)
 
-        class_dict[new_id + 3] = (
+        class_dict[new_id + start_cluster_id] = (
             f"Landes cluster {new_id + 1} H={mean_height:.2f}m "
             f"D={mean_distance:.2f} N={n_points}"
         )

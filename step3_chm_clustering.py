@@ -23,22 +23,42 @@ if __name__ == "__main__":
     path_roc = config["paths"]["roc_mask_path"]
     path_shadow = config["paths"]["shadow_mask_path"]
 
-    save_path = merge_composite_images(files)
-    masked_output_path = os.path.join(
-        os.path.dirname(save_path), config["output_files"]["masked_filename"]
-    )
-    apply_masks(
-        save_path,
-        path_roc,
-        path_shadow,
-        masked_output_path,
-    )
+    # Vérifier l'existence des masques
+    use_masks = True
+    if not os.path.exists(path_roc):
+        print(f"⚠️  Masque de roche non trouvé: {path_roc}")
+        use_masks = False
 
-    final_path = os.path.join(
-        os.path.dirname(path),
-        config["paths"]["output_subdir"],
-        config["output_files"]["masked_filename"],
-    )
+    if not os.path.exists(path_shadow):
+        print(f"⚠️  Masque d'ombre non trouvé: {path_shadow}")
+        use_masks = False
+
+    if use_masks:
+        print("✅ Utilisation des masques de roche et d'ombre")
+    else:
+        print("🔄 Traitement sans masques - utilisation de toute la tuile")
+
+    save_path = merge_composite_images(files)
+
+    if use_masks:
+        masked_output_path = os.path.join(
+            os.path.dirname(save_path), config["output_files"]["masked_filename"]
+        )
+        apply_masks(
+            save_path,
+            path_roc,
+            path_shadow,
+            masked_output_path,
+        )
+
+        final_path = os.path.join(
+            os.path.dirname(path),
+            config["paths"]["output_subdir"],
+            config["output_files"]["masked_filename"],
+        )
+    else:
+        # Utiliser directement le fichier fusionné sans masquage
+        final_path = save_path
     with rasterio.open(final_path) as src:
         final_data = src.read()
         final_data = np.moveaxis(
@@ -51,8 +71,12 @@ if __name__ == "__main__":
         print(f"Dimensions finales des données: {final_data.shape}")
 
     classified_array, class_dict, pixels_restants, cond_restants = (
-        prepare_classification(final_data)
+        prepare_classification(final_data, use_masks=use_masks)
     )
+
+    # Déterminer l'ID de départ pour les clusters selon l'utilisation des masques
+    start_cluster_id = 3 if use_masks else 2
+
     # Appliquer clustering sur les pixels restants
     method = config["clustering_settings"][
         "method"
@@ -69,8 +93,8 @@ if __name__ == "__main__":
         # Ajouter les résultats de KMeans à la classification
         labels = kmeans.labels_
         classified_array[cond_restants] = (
-            labels + 3
-        )  # Décaler les labels pour éviter les conflits avec les classes existantes
+            labels + start_cluster_id
+        )  # Décaler les labels selon le mode utilisé
 
     elif method == "gmm":
         gmm = GaussianMixture(
@@ -85,10 +109,12 @@ if __name__ == "__main__":
         )
         labels = gmm.fit_predict(pixels_restants)
         classified_array[cond_restants] = (
-            labels + 3
-        )  # Décaler les labels pour éviter les conflits avec les classes existantes
+            labels + start_cluster_id
+        )  # Décaler les labels selon le mode utilisé
 
-    class_dict = sort_clusters_by_height(pixels_restants, labels, class_dict)
+    class_dict = sort_clusters_by_height(
+        pixels_restants, labels, class_dict, start_cluster_id
+    )
 
     # Définir des couleurs adaptées à la végétation depuis la config
     colors_dict = {}
@@ -99,6 +125,22 @@ if __name__ == "__main__":
     output_filename = config["output_files"]["classified_filename"].format(
         method=method
     )
+
+    # Ajouter un suffixe pour distinguer le mode utilisé
+    if not use_masks:
+        base_name, ext = os.path.splitext(output_filename)
+        output_filename = f"{base_name}_no_masks{ext}"
+
+    print(f"💾 Sauvegarde du fichier de classification: {output_filename}")
+    if use_masks:
+        print(
+            f"📊 Classes utilisées: Roche (0), Ombre (1), Arbustes/Forêts (2), Landes ({start_cluster_id}-{start_cluster_id+config['clustering_settings']['n_clusters']-1}), NoData (128)"
+        )
+    else:
+        print(
+            f"📊 Classes utilisées: Arbustes/Forêts (2), Landes ({start_cluster_id}-{start_cluster_id+config['clustering_settings']['n_clusters']-1}), NoData (128)"
+        )
+
     save_classified_with_palette(
         array=classified_array,
         output_path=os.path.join(os.path.dirname(final_path), output_filename),

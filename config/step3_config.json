@@ -27,7 +27,9 @@
         "input_path": "/home/mgallet/Téléchargements/results/*multi*.tif",
         "roc_mask_path": "/home/mgallet/Téléchargements/output/roc.tif",
         "shadow_mask_path": "/home/mgallet/Téléchargements/output/ombre.tif",
-        "output_subdir": "processed"
+        "output_subdir": "processed",
+        "use_masks": true,
+        "masks_optional": true
     },
     "output_files": {
         "composite_filename": "composite_image.tif",
